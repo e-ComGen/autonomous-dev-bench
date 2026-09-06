@@ -1,0 +1,21 @@
+{
+  "benchmark_spec_version": "1.0",
+  "project_id": "pluggy.pinned_001",
+  "source": {
+    "repository": "https://github.com/pytest-dev/pluggy.git",
+    "commit_sha": "fd08ab5f811a9b2fa9124ae8cbbd393221151e2c",
+    "source_tree_digest": "sha256:82bdbb16b3d3468bd5355b3fc0c10993537a144d514e999d4dc03a04e47eede9"
+  },
+  "legal": {"license_spdx": "MIT", "license_file": "LICENSE", "license_file_digest": "sha256:de91589cbcc498cb36d3f979e39d4fb1ea1164d5331f6e0ea90a986525310d51"},
+  "platforms": {"operating_systems": ["linux", "windows"], "python": ["3.11", "3.12", "3.13"]},
+  "bootstrap": {
+    "adapter_id": "python-standard-v1",
+    "dependency_spec_digests": ["sha256:a80661d4d18b92dba406d0df5c9e886d2bceb0d283314ed244aaf0c161a35e2b"],
+    "dependency_spec_paths": ["pyproject.toml"],
+    "install": {"command_id": "editable-testing", "argv": ["python", "-m", "pip", "install", "-e", ".[testing]"]}
+  },
+  "baseline": {"commands": [{"id": "unit-tests", "argv": ["python", "-m", "pytest"], "timeout_seconds": 1200}], "required_status": "passing", "baseline_health_revision": "1"},
+  "classification": {"scale": "small", "domain": ["plugin-system"], "architecture_features": ["hooks", "plugins", "public-api"], "capabilities_exercised": ["auto_refactoring", "auto_zoning"]},
+  "security": {"build_network_policy": "package_indices_only", "execution_network_policy": "none"},
+  "corpus": {"release": "2026.1", "partition": "validation"}
+}

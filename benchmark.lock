@@ -1,0 +1,27 @@
+lock_version = "1"
+benchmark_spec_version = "1.0"
+benchmark_core_version = "0.1.0"
+corpus_version = "2026.1"
+test_policy_version = "1"
+executor_version = "3"
+
+[suites.auto_refactoring]
+suite_version = "4"
+adapter_version = "2"
+policy_version = "4"
+acceptance_version = "4"
+
+[suites.auto_zoning]
+suite_version = "3"
+adapter_version = "4"
+policy_version = "4"
+acceptance_version = "4"
+
+[toolchain]
+python = ">=3.11"
+build_backend = "setuptools.build_meta"
+
+[security]
+build_network = "package_indices_only"
+execution_network = "none"
+hidden_campaigns_in_checkout = false

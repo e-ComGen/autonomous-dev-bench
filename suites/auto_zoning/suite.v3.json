@@ -1,0 +1,31 @@
+{
+  "suite_id": "auto_zoning",
+  "suite_version": "3",
+  "input_checkpoint": "task_ready",
+  "system_adapter": "auto_zoning.production_api.v3",
+  "adapter_version": "4",
+  "policy_version": "4",
+  "acceptance_version": "4",
+  "required_observations": ["responsibility_proposal", "ownership_proposal", "boundary_proposal", "proposal_mass", "partial_mass", "unknown_mass", "raw_output"],
+  "required_oracles": [
+    "responsibility_ground_truth.v4",
+    "ownership_ground_truth.v3",
+    "boundary_constraints.v2"
+  ],
+  "suite_hard_gates": ["no_unauthorized_owner_assignment"],
+  "global_hard_gates": ["unauthorized_cross_zone_write", "lost_required_verification", "half_applied_transaction", "accepted_stale_candidate", "evidence_integrity_failure"],
+  "metrics": [
+    "auto_zoning.responsibility_precision",
+    "auto_zoning.responsibility_recall",
+    "auto_zoning.ownership_accuracy",
+    "auto_zoning.ownership_recall",
+    "auto_zoning.unauthorized_owner_assignments",
+    "auto_zoning.unauthorized_cross_zone_writes",
+    "auto_zoning.cross_zone_false_positive",
+    "auto_zoning.boundary_recall",
+    "auto_zoning.proposal_mass",
+    "auto_zoning.partial_mass",
+    "auto_zoning.unknown_mass"
+  ],
+  "labels_ref": "private:auto_zoning/labels/v1"
+}

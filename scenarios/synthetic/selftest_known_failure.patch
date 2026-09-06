@@ -1,0 +1,6 @@
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@
+ def test_provider_contract() -> None:
+-    assert Client("upper").send("Hello") == "HELLO"
++    assert Client("upper").send("Hello") == "intentionally-failing-overlay"

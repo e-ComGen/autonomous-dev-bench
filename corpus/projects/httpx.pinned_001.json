@@ -1,0 +1,32 @@
+{
+  "benchmark_spec_version": "1.0",
+  "project_id": "httpx.pinned_001",
+  "source": {
+    "repository": "https://github.com/encode/httpx.git",
+    "commit_sha": "26d48e0634e6ee9cdc0533996db289ce4b430177",
+    "source_tree_digest": "sha256:be11d32cc168136e4cdab82b0a47e8ca3c397dfc7c9caccf92cb1bd3161f5326"
+  },
+  "legal": {
+    "license_spdx": "BSD-3-Clause",
+    "license_file": "LICENSE.md",
+    "license_file_digest": "sha256:eb237e056a490d1f290e4dfa3cc342a04c64a89701385f86a847cdbe4d21957d"
+  },
+  "platforms": {"operating_systems": ["linux", "windows"], "python": ["3.11", "3.12", "3.13"]},
+  "bootstrap": {
+    "adapter_id": "python-standard-v1",
+    "dependency_spec_digests": [
+      "sha256:df6ead82c82909bacc1f54fa0de8edc52dab17742d548d41c284506e3c05706f",
+      "sha256:c6921c49b838f5ac3d3335ab000164fdd789c9364423b5241029be7d7a510b39"
+    ],
+    "dependency_spec_paths": ["pyproject.toml", "requirements.txt"],
+    "install": {"command_id": "editable-tests", "argv": ["python", "-m", "pip", "install", "-e", ".", "-r", "requirements.txt"]}
+  },
+  "baseline": {
+    "commands": [{"id": "deterministic-unit-tests", "argv": ["python", "-m", "pytest", "-q", "tests/client/test_client.py", "tests/client/test_async_client.py", "tests/test_api.py", "tests/test_config.py", "tests/test_exported_members.py"], "timeout_seconds": 1200}],
+    "required_status": "passing",
+    "baseline_health_revision": "3"
+  },
+  "classification": {"scale": "medium", "domain": ["http-client", "networking"], "architecture_features": ["async", "sync", "transports", "public-api"], "capabilities_exercised": ["auto_refactoring", "auto_zoning"]},
+  "security": {"build_network_policy": "package_indices_only", "execution_network_policy": "none"},
+  "corpus": {"release": "2026.1", "partition": "development"}
+}

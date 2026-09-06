@@ -1,0 +1,21 @@
+{
+  "benchmark_spec_version": "1.0",
+  "project_id": "requests.pinned_001",
+  "source": {
+    "repository": "https://github.com/psf/requests.git",
+    "commit_sha": "b25c87d7cb8d6a18a37fa12442b5f883f9e41741",
+    "source_tree_digest": "sha256:27ff0aeea9e531a3eb82144fc5b94c06a772c964e8192dbff0860b62941fc162"
+  },
+  "legal": {"license_spdx": "Apache-2.0", "license_file": "LICENSE", "license_file_digest": "sha256:88046bf22d5b4f4b8cc85079ae6aae5424a3a1999db952ed152828ff325b2c6d"},
+  "platforms": {"operating_systems": ["linux", "windows"], "python": ["3.11", "3.12", "3.13"]},
+  "bootstrap": {
+    "adapter_id": "python-standard-v1",
+    "dependency_spec_digests": ["sha256:a5b52f2e3196da56ac62b0d48b2be83e36eccf62f9d062b93fca8488da49ab60", "sha256:68d06c0156b89e98ac163dea286ec652845a1c989da58f07ec36d3b142f1499e", "sha256:251167dd6732e42117b9f9e536c3ac877197ee6eda8779eae3b756432cfc8f85"],
+    "dependency_spec_paths": ["pyproject.toml", "setup.cfg", "setup.py"],
+    "install": {"command_id": "editable-tests", "argv": ["python", "-m", "pip", "install", "-e", ".[socks]", "pytest", "pytest-httpbin"]}
+  },
+  "baseline": {"commands": [{"id": "unit-tests", "argv": ["python", "-m", "pytest", "tests"], "timeout_seconds": 1200}], "required_status": "passing", "baseline_health_revision": "1"},
+  "classification": {"scale": "medium", "domain": ["http-client"], "architecture_features": ["sessions", "adapters", "public-api"], "capabilities_exercised": ["auto_refactoring", "auto_zoning"]},
+  "security": {"build_network_policy": "package_indices_only", "execution_network_policy": "none"},
+  "corpus": {"release": "2026.1", "partition": "development"}
+}

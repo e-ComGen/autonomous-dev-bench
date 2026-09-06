@@ -1,0 +1,19 @@
+{
+  "task_id": "httpx.add_transport_provider.v1",
+  "task_version": "1",
+  "project_id": "httpx.pinned_001",
+  "baseline_checkpoint": "baseline",
+  "user_request": "Add a named transport-provider registry and factory selection key for sync and async clients, with deterministic unknown-key errors and exactly-once provider lifecycle dispatch, while preserving existing injected-transport behavior.",
+  "expected_scope": {
+    "affected_domains": ["transport_provider", "client_integration"],
+    "candidate_zones": ["transports", "client_integration"]
+  },
+  "cross_zone_contracts": [
+    {"contract_id": "transport_client_contract", "producer_zone": "transports", "consumer_zone": "client_integration"}
+  ],
+  "functional_oracle_ref": {"oracle_id": "private:httpx/transport_provider", "version": "2"},
+  "architecture_constraints": {
+    "acceptable_families": ["existing_transport_abstraction", "strategy", "factory", "function_table"],
+    "forbidden": ["duplicate_provider_dispatch", "mutable_process_global", "unauthorized_cross_zone_state"]
+  }
+}

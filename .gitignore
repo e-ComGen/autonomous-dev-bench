@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.venv/
+.cache/
+runs/
+*.db
+*.sqlite3
+# Hidden campaign material must never enter this checkout.
+private/
+hidden_*/

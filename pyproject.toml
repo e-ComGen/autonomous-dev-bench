@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-dev-bench"
+version = "0.1.0"
+description = "Shared experimental substrate with capability-local evaluation for autonomous software development"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "e-ComGen" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "build>=1.2"]
+
+[project.scripts]
+autonomous-dev-bench = "cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["packages/benchmark_core", "."]
+include = ["benchmark_core*", "cli*", "corpus*", "oracles*", "mutations*", "faults*", "suites*"]
+exclude = ["tests*", "reference_projects*"]
+
+[tool.setuptools.package-data]
+"suites.auto_refactoring" = ["*.json"]
+"suites.auto_zoning" = ["*.json"]
+
+[tool.setuptools.data-files]
+"share/autonomous-dev-bench/corpus/projects" = ["corpus/projects/*.json"]
+"share/autonomous-dev-bench/corpus/baselines" = ["corpus/baselines/*.json"]
+"share/autonomous-dev-bench/tasks" = ["tasks/*.json"]
+"share/autonomous-dev-bench/scenarios/synthetic" = ["scenarios/synthetic/*.json"]
+"share/autonomous-dev-bench/scenarios/real_world" = ["scenarios/real_world/*.json"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+pythonpath = [".", "packages/benchmark_core"]
+
+[tool.coverage.run]
+branch = true
+source = ["benchmark_core", "oracles", "mutations", "faults", "suites", "cli"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80

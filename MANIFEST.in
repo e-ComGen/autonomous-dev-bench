@@ -1,0 +1,9 @@
+include benchmark.lock
+include LICENSE
+recursive-include corpus *.json *.md
+recursive-include docs *.md
+recursive-include reports *.md
+recursive-include scenarios *.json *.patch
+recursive-include tasks *.json
+recursive-include tools *.py
+recursive-include reference_projects *.py *.toml

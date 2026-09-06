@@ -1,0 +1,35 @@
+{
+  "suite_id": "auto_refactoring",
+  "suite_version": "4",
+  "input_checkpoint": "candidate_bad_dispatch",
+  "system_adapter": "auto_refactoring.production_api.v2",
+  "adapter_version": "2",
+  "policy_version": "4",
+  "acceptance_version": "4",
+  "required_observations": ["raw_output", "raw_status", "stdout", "stderr", "changed_paths"],
+  "required_oracles": [
+    "mutation_presence.independent.v1",
+    "design_opportunity.v3",
+    "functional_regression.v2",
+    "differential_behavior.v1",
+    "public_api.v2"
+  ],
+  "suite_hard_gates": ["no_false_safe", "semantic_preservation"],
+  "global_hard_gates": ["false_safe_certificate", "lost_required_verification", "half_applied_transaction", "accepted_stale_candidate", "evidence_integrity_failure"],
+  "metrics": [
+    "auto_refactoring.detection_precision",
+    "auto_refactoring.detection_recall",
+    "auto_refactoring.detection_true_positive",
+    "auto_refactoring.detection_false_positive",
+    "auto_refactoring.detection_false_negative",
+    "auto_refactoring.keep_current_accuracy",
+    "auto_refactoring.keep_current_applicable",
+    "auto_refactoring.keep_current_correct",
+    "auto_refactoring.semantic_preservation",
+    "auto_refactoring.claimed_safe",
+    "auto_refactoring.false_safe",
+    "core.changed_files",
+    "core.wall_time"
+  ],
+  "labels_ref": "private:auto_refactoring/labels/v1"
+}

@@ -1,0 +1,23 @@
+{
+  "task_id": "selftest.add_provider.v1",
+  "task_version": "1",
+  "project_id": "benchmark_selftest_project.pinned_001",
+  "baseline_checkpoint": "baseline",
+  "user_request": "Add a selectable title-case provider through the existing public Client API.",
+  "expected_scope": {
+    "affected_domains": ["provider", "client_integration"],
+    "candidate_zones": ["provider_ownership", "client_integration"]
+  },
+  "cross_zone_contracts": [
+    {
+      "contract_id": "provider_contract",
+      "producer_zone": "provider_ownership",
+      "consumer_zone": "client_integration"
+    }
+  ],
+  "functional_oracle_ref": {"oracle_id": "private:selftest/provider_feature", "version": "1"},
+  "architecture_constraints": {
+    "acceptable_families": ["existing_provider_protocol", "compatible_dispatch"],
+    "forbidden": ["process_global_request_state", "unauthorized_cross_zone_state"]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "scenario_id": "httpx.add_transport_provider.shared.v1",
+  "spec_version": "1",
+  "project_id": "httpx.pinned_001",
+  "task_id": "httpx.add_transport_provider.v1",
+  "input_checkpoint": "baseline",
+  "checkpoints": [
+    {"checkpoint_id": "baseline", "parent": null, "overlays": []},
+    {"checkpoint_id": "task_ready", "parent": "baseline", "overlays": ["task:httpx.add_transport_provider.v1"]},
+    {"checkpoint_id": "candidate", "parent": "task_ready", "overlays": ["fixture:httpx.transport_provider_candidate.v1"]},
+    {"checkpoint_id": "candidate_bad_dispatch", "parent": "candidate", "overlays": ["mutation:DUPLICATE_PROVIDER_DISPATCH"]}
+  ],
+  "mutations": [{"mutation_id": "DUPLICATE_PROVIDER_DISPATCH", "seed": 819283}],
+  "faults": [],
+  "execution": {"mode": "fresh_process", "timeout_seconds": 1200, "network": "none"},
+  "suites": ["auto_refactoring", "auto_zoning"],
+  "metadata": {
+    "corpus_release": "2026.1",
+    "shared_workload": true,
+    "mechanics_identities": {
+      "task:httpx.add_transport_provider.v1": "sha256:740583922dfafd7a72b976b413c4995c9fa0e2c81c00e9995f39b4f299b11e6f",
+      "fixture:httpx.transport_provider_candidate.v1": "sha256:9d370d486a4d70b34aadfce5e8c19a026c953593a744187d137f4f3b56eff6ef",
+      "mutation:DUPLICATE_PROVIDER_DISPATCH": "sha256:92f243e5300d610a7f8603aa1be72075ebf36b9be1d42d0ce82a988ff2928df4"
+    }
+  }
+}
