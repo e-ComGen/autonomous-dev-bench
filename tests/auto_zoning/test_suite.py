@@ -38,7 +38,7 @@ def test_plan_uses_task_ready_and_v4_benchmark_adapter() -> None:
     suite_plan = plan()
     assert suite_plan.input_checkpoint == "task_ready"
     assert suite_plan.adapter_id == ADAPTER_ID == "auto_zoning.production_api.v3"
-    assert suite_plan.adapter_version == "4"
+    assert suite_plan.adapter_version == "5"
     assert suite_plan.oracle_ids == (
         "responsibility_ground_truth.v4", "ownership_ground_truth.v3", "boundary_constraints.v2",
     )

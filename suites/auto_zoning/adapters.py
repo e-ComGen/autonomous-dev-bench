@@ -291,7 +291,7 @@ class ProductionSemanticSubprocessAdapter:
     timeout_seconds: float = 300.0
     environment: Mapping[str, str] = field(default_factory=dict)
     adapter_id: str = ADAPTER_ID
-    adapter_version: str = "4"
+    adapter_version: str = "5"
     production_system_id: str = "auto-zoning"
     production_version: str = "0.6.0"
     execution_boundary: str = "subprocess"
@@ -334,6 +334,33 @@ class ProductionSemanticSubprocessAdapter:
             },
         }
         return CommandSpec(self.command, self.timeout_seconds, str(workspace), environment=self.environment, stdin=json.dumps(request))
+
+    def prepare_preview_command(self, repository: Path, input_fingerprint: str, *, mode: str = "FULL",
+                                paths: Sequence[str] = (), user_request: str = "Preview repository zoning; advisory only.") -> CommandSpec:
+        if not repository.resolve().is_dir():
+            raise ValueError("preview repository must be an existing directory")
+        normalized_paths = tuple(Path(path).as_posix() for path in paths)
+        _scope_contract({"input_fingerprint": input_fingerprint, "scope_paths": normalized_paths})
+        if mode not in {"FULL", "PATHS"}:
+            raise ValueError("preview scope mode must be FULL or PATHS")
+        if mode == "FULL" and normalized_paths:
+            raise ValueError("FULL preview does not accept paths")
+        if mode == "PATHS" and not normalized_paths:
+            raise ValueError("PATHS preview requires at least one path")
+        if mode == "PATHS":
+            for relative in normalized_paths:
+                if not (repository.resolve() / relative).is_file():
+                    raise ValueError(f"PATHS preview seed must be an existing file: {relative}")
+        request = {
+            "schema": "autonomous-dev-bench/auto-zoning-worker-request/v2",
+            "repository": str(repository.resolve()), "runner_input_fingerprint": input_fingerprint,
+            "analysis_scope": {"mode": mode, "paths": list(normalized_paths)},
+            "invocation": {"source_snapshot": {"input_fingerprint": input_fingerprint,
+                                                  "scope_paths": list(normalized_paths)},
+                           "user_request": user_request},
+        }
+        return CommandSpec(self.command, self.timeout_seconds, str(repository.resolve()),
+                           environment=self.environment, stdin=json.dumps(request))
 
     def parse_execution(self, execution: ExecutionResult):
         if execution.timed_out:

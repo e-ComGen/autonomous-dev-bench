@@ -3,7 +3,7 @@
   "suite_version": "3",
   "input_checkpoint": "task_ready",
   "system_adapter": "auto_zoning.production_api.v3",
-  "adapter_version": "4",
+  "adapter_version": "5",
   "policy_version": "4",
   "acceptance_version": "4",
   "required_observations": ["responsibility_proposal", "ownership_proposal", "boundary_proposal", "proposal_mass", "partial_mass", "unknown_mass", "raw_output"],

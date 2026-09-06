@@ -13,7 +13,7 @@ acceptance_version = "4"
 
 [suites.auto_zoning]
 suite_version = "3"
-adapter_version = "4"
+adapter_version = "5"
 policy_version = "4"
 acceptance_version = "4"
 

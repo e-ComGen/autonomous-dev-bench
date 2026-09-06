@@ -9,6 +9,8 @@ build/
 .venv/
 .cache/
 runs/
+# Preview JSON includes large generated/raw production payloads; Markdown snapshots are reviewable examples.
+reports/zoning-preview/*.json
 *.db
 *.sqlite3
 # Hidden campaign material must never enter this checkout.

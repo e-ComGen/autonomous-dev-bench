@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 from typing import Iterable
@@ -54,7 +55,7 @@ def source_tree_digest(root: str | os.PathLike[str]) -> str:
     if not base.is_dir():
         raise ValueError(f"not a source directory: {base}")
     digest = hashlib.sha256()
-    git_modes: dict[str, bytes] = {}
+    git_entries: dict[str, tuple[bytes, bytes]] = {}
     if (base / ".git").exists():
         indexed = subprocess.run(
             ["git", "-C", str(base), "ls-files", "-s", "-z"],
@@ -64,8 +65,8 @@ def source_tree_digest(root: str | os.PathLike[str]) -> str:
             if not entry:
                 continue
             metadata, raw_path = entry.split(b"\t", 1)
-            mode = metadata.split(b" ", 1)[0]
-            git_modes[raw_path.decode("utf-8", "surrogateescape")] = mode
+            mode, object_id, _stage = metadata.split(b" ", 2)
+            git_entries[raw_path.decode("utf-8", "surrogateescape")] = (mode, object_id)
     entries: list[Path] = []
     for current, dirs, files in os.walk(base, topdown=True, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d != ".git")
@@ -75,10 +76,27 @@ def source_tree_digest(root: str | os.PathLike[str]) -> str:
     for path in sorted(set(entries), key=lambda p: p.relative_to(base).as_posix().encode("utf-8")):
         relative_text = path.relative_to(base).as_posix()
         relative = relative_text.encode("utf-8")
-        indexed_mode = git_modes.get(relative_text)
+        indexed_entry = git_entries.get(relative_text)
+        indexed_mode = indexed_entry[0] if indexed_entry else None
         if indexed_mode == b"120000" or path.is_symlink():
+            if indexed_mode == b"120000" and not path.is_symlink():
+                raise ValueError(f"pinned Git symlink was materialized as a regular file: {relative_text}")
             kind = b"L"
-            payload = os.readlink(path).encode("utf-8") if path.is_symlink() else path.read_bytes()
+            actual_target = Path(os.readlink(path))
+            if indexed_entry:
+                payload = subprocess.run(["git", "-C", str(base), "cat-file", "blob", indexed_entry[1].decode("ascii")],
+                                         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False).stdout
+                expected_link = payload.decode("utf-8", "surrogateescape")
+                expected_resolved = (path.parent / expected_link).resolve(strict=False)
+                actual_resolved = path.resolve(strict=False)
+                if actual_resolved != expected_resolved:
+                    raise ValueError(f"pinned symlink target mismatch: {relative_text}")
+                resolved_target = posixpath.normpath(posixpath.join(posixpath.dirname(relative_text), expected_link))
+                expected_directory = any(item.startswith(resolved_target.rstrip("/") + "/") for item in git_entries)
+                if expected_directory and not path.is_dir():
+                    raise ValueError(f"pinned directory symlink has incorrect filesystem semantics: {relative_text}")
+            else:
+                payload = os.readlink(path).encode("utf-8")
             mode = b"0"
         else:
             kind, payload = b"F", path.read_bytes()

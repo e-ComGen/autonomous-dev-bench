@@ -14,10 +14,10 @@
 
 ## Verification performed
 
-- Platform unit/integration suite: 107 passing tests plus one opt-in local-production test.
+- Platform unit/integration suite: 116 passing tests plus two opt-in local-production tests.
 - Standalone self-test project: 2 passing tests.
-- Coverage gate: 80% required; final measured branch coverage 80.07%.
-- Clean sdist and wheel build; clean-venv wheel import, installed corpus assets, and CLI `list-suites` smoke test.
+- Coverage gate: 80% required; final measured branch coverage 80.08%.
+- Clean sdist and wheel build; clean-venv wheel import, installed corpus assets, and CLI `list-suites` and `zoning-preview --help` smoke tests.
 - Realized HTTPX virtual environment and deterministic baseline policy: PASS with CAS evidence.
 - Opt-in baseline-gated diagnostic HTTPX run through `ExperimentRunner`, the real Auto-Refactoring v0.10 CLI, executable HTTPX lifecycle/API oracles, and the real Auto-Zoning v0.6 subprocess worker: 1 passed. Authoritative admission requires a pinned sandbox attestation; the core ships a digest-pinned, network-denied Docker provider, while the local production integration remains deliberately diagnostic.
 - Dependency firewall passed against the current Auto-Refactoring, Auto-Zoning and DeepSeek Harness trees.

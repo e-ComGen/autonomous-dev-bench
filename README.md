@@ -43,6 +43,19 @@ The CLI exposes validation, digest, evidence verification and suite-manifest ins
 autonomous-dev-bench --help
 ```
 
+### Real-project Auto-Zoning preview
+
+Run advisory full-project analysis against fresh, digest-verified worktrees of the pinned HTTPX, Requests and Pluggy repositories:
+
+```bash
+autonomous-dev-bench zoning-preview \
+  --production-source /path/to/auto-zoning/src \
+  --runs 3 \
+  --output-dir reports/zoning-preview
+```
+
+Use `--project pluggy` to select one project. Repeating `--scope path/to/file.py` switches that single project to bounded `PATHS` mode; omitting it uses the production frontend's true `FULL` mode (`seeds=None`). Each independent run rechecks source bytes. The command writes a deterministic JSON summary, a Markdown map, and separate raw production JSON for every run. Stability compares production `analysis_digest` plus a canonical normalized proposal, excluding timestamps and telemetry. Preview output is always `authority: NONE`, is not an oracle verdict, and must not be interpreted as architectural certification.
+
 ## Hard gates
 
 A run is unsuccessful if any critical counter is nonzero, regardless of all other metrics: false-safe certification, unauthorized cross-zone write, half-applied transaction, accepted stale candidate, lost required verification, or evidence-integrity failure.

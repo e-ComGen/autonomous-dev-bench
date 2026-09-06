@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+import sys
 from typing import Any, Sequence
 
 from benchmark_core.cas import FileSystemCAS
@@ -47,6 +49,15 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("list-suites", help="list packaged capability-local suite manifests")
     gates = sub.add_parser("check-hard-gates", help="fail if a critical gate counter is nonzero")
     gates.add_argument("path")
+    zoning = sub.add_parser("zoning-preview", help="preview advisory Auto-Zoning maps on pinned real projects")
+    zoning.add_argument("--project", action="append", choices=("httpx", "requests", "pluggy", "httpx.pinned_001", "requests.pinned_001", "pluggy.pinned_001"))
+    zoning.add_argument("--production-source", default=os.environ.get("AUTODEV_AUTOZONING_SOURCE"))
+    zoning.add_argument("--autozoning-python", default=sys.executable)
+    zoning.add_argument("--scope", action="append", default=[])
+    zoning.add_argument("--runs", type=int, default=3)
+    zoning.add_argument("--timeout", type=float, default=180.0)
+    zoning.add_argument("--cache-root", default=".cache/zoning-preview")
+    zoning.add_argument("--output-dir", default="reports/zoning-preview")
     return parser
 
 
@@ -80,6 +91,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "input_checkpoint": value.input_checkpoint, "content_digest": str(value.content_digest),
                 })
             print(canonical_json(manifests))
+        elif args.command == "zoning-preview":
+            from cli.zoning_preview import run_project_preview
+            if not args.production_source:
+                raise ValueError("--production-source or AUTODEV_AUTOZONING_SOURCE is required")
+            projects = args.project or ["httpx", "requests", "pluggy"]
+            if args.scope and len(projects) != 1:
+                raise ValueError("--scope may only be used with one --project")
+            reports = [run_project_preview(
+                project, production_source=Path(args.production_source), python_executable=Path(args.autozoning_python),
+                cache_root=Path(args.cache_root), output_dir=Path(args.output_dir), runs=args.runs,
+                scope_paths=args.scope, timeout=args.timeout,
+            ) for project in projects]
+            summary = [{"project_id": item["project"]["project_id"], "status": item["status"],
+                        "stability": item["stability"]["status"]} for item in reports]
+            print(canonical_json(summary))
+            if any(item["status"] == "INFRA_FAILURE" for item in reports): return 2
+            if any(item["status"] != "PASS" for item in reports): return 1
         elif args.command == "check-hard-gates":
             counters = _json(args.path)
             if not isinstance(counters, dict): raise ValueError("hard-gate input must be an object")
@@ -96,7 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 1
             print("hard gates: PASS")
         return 0
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"error: {exc}")
         return 2
 

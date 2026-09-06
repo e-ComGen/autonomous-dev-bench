@@ -46,7 +46,7 @@ def plan() -> SuitePlan:
         ORACLE_IDS,
         REQUIRED_OBSERVATIONS,
         HARD_GATE_IDS,
-        adapter_version="4",
+        adapter_version="5",
         policy_version="4",
         acceptance_version="4",
         global_hard_gate_ids=("unauthorized_cross_zone_write", "lost_required_verification", "half_applied_transaction", "accepted_stale_candidate", "evidence_integrity_failure"),

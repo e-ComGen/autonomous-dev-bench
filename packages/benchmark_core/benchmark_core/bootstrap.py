@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import os
 from pathlib import Path
+import posixpath
 import platform
 import shutil
 import subprocess
@@ -88,6 +89,34 @@ class ProjectEnvironmentBuilder:
         if probe.returncode == 0:
             subprocess.run(("git", "-C", str(workspace), "reset", "--hard", "HEAD"), capture_output=True, check=True)
             subprocess.run(("git", "-C", str(workspace), "clean", "-ffdx"), capture_output=True, check=True)
+            listing = subprocess.run(("git", "-C", str(workspace), "ls-tree", "-r", "-z", "--full-tree", "HEAD"),
+                                     check=True, stdout=subprocess.PIPE).stdout
+            entries = [entry for entry in listing.split(b"\0") if entry]
+            tracked_paths = {entry.split(b"\t", 1)[1].decode("utf-8", "surrogateescape") for entry in entries}
+            for entry in entries:
+                metadata, raw_path = entry.split(b"\t", 1)
+                mode, kind, object_id = metadata.split(b" ", 2)
+                if kind != b"blob": raise ValueError("baseline restore only supports Git blobs")
+                relative = Path(raw_path.decode("utf-8", "surrogateescape"))
+                if relative.is_absolute() or ".." in relative.parts: raise ValueError("Git tree path escapes workspace")
+                target = workspace / relative
+                payload = subprocess.run(("git", "-C", str(workspace), "cat-file", "blob", object_id.decode("ascii")),
+                                         check=True, stdout=subprocess.PIPE).stdout
+                if target.exists() or target.is_symlink(): target.unlink()
+                if mode == b"120000":
+                    link_target = payload.decode("utf-8", "surrogateescape")
+                    resolved_target = posixpath.normpath(posixpath.join(posixpath.dirname(relative.as_posix()), link_target))
+                    target_is_directory = any(item.startswith(resolved_target.rstrip("/") + "/") for item in tracked_paths)
+                    try:
+                        target.symlink_to(link_target.replace("/", os.sep), target_is_directory=target_is_directory)
+                        expected_target = (target.parent / link_target).resolve(strict=False)
+                        if expected_target.exists() and not target.exists():
+                            target.unlink()
+                            target.symlink_to(expected_target, target_is_directory=target_is_directory)
+                    except OSError as exc: raise ValueError(f"cannot restore pinned symlink: {relative.as_posix()}") from exc
+                else:
+                    target.write_bytes(payload)
+                    if mode == b"100755": target.chmod(target.stat().st_mode | 0o111)
         if source_tree_digest(workspace) != expected_digest:
             raise ValueError("baseline execution did not restore the disposable source tree")
 

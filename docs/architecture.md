@@ -24,6 +24,12 @@ Suites cannot override checkout, isolation, CAS or evidence behavior. Project ad
 
 A scenario is declarative and answer-free. Its checkpoint DAG composes a pinned source with task/fixture/mutation overlays. Auto-Zoning consumes the task-ready checkpoint. Auto-Refactoring consumes a candidate checkpoint. Expected answers are supplied only through suite-local oracle contexts, which are never mounted into the system-under-test workspace.
 
+## Advisory real-project zoning previews
+
+The preview lane is intentionally separate from suite evaluation. It materializes a pristine pinned project and asks Auto-Zoning for either true `FULL` analysis (`seeds=None`) or explicit repository-relative `PATHS`. No private labels or task oracle are loaded, and every output is marked `advisory: true` and `authority: NONE`.
+
+Independent uncached repetitions verify the source tree before and after execution. Stability uses the production `analysis_digest` and a canonical normalized proposal, not volatile timestamps or telemetry. Deterministic summary JSON and Markdown are separated from raw per-run production payloads. `PARTIAL` analysis remains visible rather than being promoted into a correctness verdict; source races, process failures, malformed output and version mismatches fail the preview.
+
 ## Content identity and caching
 
 Friendly IDs are labels, not cache keys. Canonical JSON and SHA-256 identify specifications and artifacts. Environment keys include every behavior-relevant platform, interpreter, dependency, adapter, policy and environment-variable field. Baseline keys additionally include command, executor and test-policy versions. Observation and oracle action keys include their complete dependencies and remain suite-local where semantics are involved.
