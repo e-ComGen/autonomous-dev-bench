@@ -29,9 +29,14 @@ def prepare(root: Path, config, catalog, report, *, config_path: Path,
             result = {"project_id": item["id"], "status": "TIMEOUT" if execution.timed_out else "BLOCKED"}
             if output.is_file() and output.stat().st_size < 131072:
                 result["reason"] = json.loads(output.read_text(encoding="utf-8")).get("reason")
+            else:
+                result["reason"] = "WORKER_NO_RECEIPT"
         result["process"] = log
         results.append(result)
-        print(f"{item['id']}: {result['status']}", flush=True)
+        explanation = str(result.get("reason") or "").replace("\n", " ")[:300]
+        print(f"{item['id']}: {result['status']}" + (f" — {explanation}" if explanation else ""), flush=True)
+        if result.get("reason") == "WORKER_NO_RECEIPT":
+            print("Worker diagnostics: " + (execution.stderr or execution.stdout)[-1500:], flush=True)
     successes = {"SOURCE_VERIFIED", "BASELINE_CHECKED"}
     ready = not plan["quota_deficits"] and bool(results) and all(item["status"] in successes for item in results)
     return {"status": "PREPARED" if ready else "INCOMPLETE", "projects": results,
