@@ -10,7 +10,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 BASE_COMMIT = "bdcff037c136c248a0025a24b6e81a5138962a6f"
 BASE_SHA256 = "20f354fdf49cf0c1923fa169d6feb98389c91ccb34ba111d2158393fb20dc224"
-PAYLOAD = ("START.cmd", "RUN_NATIVE_ONCE.cmd", "LAUNCH_FIX.md", ".env.example", ".gitignore",
+PAYLOAD = ("START.cmd", "RUN_NATIVE_ONCE.cmd", "LAUNCH_FIX.md", ".env.example", ".gitignore", ".ignore",
            "tools/start_ready.py", "tools/launcher_credentials.py", "tools/launch.py", "tools/prepare_ab.py",
            "tests/oneclick/test_credentials.py", "tests/oneclick/test_start_ready_cli.py")
 
@@ -42,10 +42,6 @@ def main(archive_path):
             target = base / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, target)
-    # Context search must not sweep operator secrets into an agent prompt.
-    ignore = destination / ".ignore"
-    with ignore.open("a", encoding="utf-8") as stream:
-        stream.write("\n.env\n.env.*\n")
     metadata_path = destination / ".bench/release.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
