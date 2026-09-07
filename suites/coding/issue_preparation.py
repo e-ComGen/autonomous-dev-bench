@@ -1,4 +1,4 @@
-"""Real candidate-to-qualified-task pipeline; no model calls or synthetic fallback."""
+"""Real candidate-to-qualified-task pipeline; preserve reasons instead of a bare quota error."""
 from dataclasses import asdict
 from pathlib import Path
 import json
@@ -7,6 +7,7 @@ import time
 from benchmark_core.identity import canonical_json, Sha256Digest
 from corpus.discovery.github import GitHubReader
 from corpus.discovery.automatic import AutomaticIntake
+from corpus.discovery.diagnostics import summarize, reason_code, top_reasons
 from corpus.qualification.acquisition import acquire_bounded
 from corpus.qualification.qualifier import qualify, IssueTask
 from corpus.qualification.evaluator import PytestEvaluator
@@ -59,37 +60,61 @@ def restore_lock(path, root, docker, report, settings, policy):
     return lock["seed"], selected
 
 
+def save_discovery(report, reader, intake, selection, rejected, requested, stop_reason):
+    details = {"qualification_rejections": rejected, "intake_rejections": intake.rejected,
+               "api_requests": reader.requests, "project_deficits": selection.deficits()}
+    summary = summarize(details, requested=requested, qualified=len(selection.selected),
+                        stop_reason=stop_reason, counts=intake.counts, searches=intake.searches)
+    summary["details_ref"] = report.cas.put_text(canonical_json(details))
+    atomic_write(report.directory / "discovery.json", json.dumps(summary, indent=2))
+    return summary
+
+
 def prepare(root, docker, report, settings, policy, seed):
     deadline = time.monotonic() + policy.prepare_seconds
     reader = GitHubReader(os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "", report.cas, policy)
+    reader.deadline = min(reader.deadline, deadline)
     intake = AutomaticIntake(reader, policy, seed)
+    intake.deadline = deadline
     selection = Selection(policy, settings.tasks)
-    rejected = []
+    rejected, terminal = [], None
+    print("Discovery: test-aware-v2; metadata prefilter, then unchanged executable qualification", flush=True)
     try:
         for candidate in intake.candidates():
             if time.monotonic() >= deadline:
                 raise TimeoutError("PREPARATION_BUDGET_EXHAUSTED")
             name = candidate["repository"]
             print(f"Checking {name}, issue #{candidate['issues'][0]['number']} ...", flush=True)
+            stage = "acquisition"
             try:
                 task = acquire_bounded(root, candidate, policy, min(policy.fetch_seconds, deadline - time.monotonic()), report)
                 if not selection.wants(name, task["classification"]["scale"]):
                     raise ValueError("PROJECT_QUOTA_FILTER")
+                stage = "qualification"
                 recipe, prepared = qualify(root, docker, task, policy, settings, seed, deadline)
                 if selection.add(recipe, prepared):
                     print(f"Qualified: {name} / #{candidate['issues'][0]['number']}", flush=True)
-                if selection.complete:
-                    break
             except (OSError, ValueError, RuntimeError) as error:
-                rejected.append({"repository": name, "pull": candidate["pull_number"], "reason": str(error)[:2000]})
-                print("Rejected: " + str(error).split(":", 1)[0][:100], flush=True)
+                rejected.append({"repository": name, "pull": candidate["pull_number"],
+                                 "stage": stage, "reason": str(error)[:2000]})
+                print("Rejected: " + reason_code(error), flush=True)
+            save_discovery(report, reader, intake, selection, rejected, settings.tasks, "IN_PROGRESS")
+            if selection.complete:
+                break
+    except (OSError, ValueError, RuntimeError) as error:
+        terminal = reason_code(error)
+        raise
+    except KeyboardInterrupt:
+        terminal = "CANCELLED"
+        raise
     finally:
-        details = {"qualification_rejections": rejected, "intake_rejections": intake.rejected,
-                   "api_requests": reader.requests, "project_deficits": selection.deficits()}
-        reference = report.cas.put_text(canonical_json(details))
-        atomic_write(report.directory / "discovery.json", json.dumps({"details_ref": reference,
-                     "rejections": len(rejected) + len(intake.rejected), "qualified": len(selection.selected),
-                     "project_deficits": selection.deficits()}, indent=2))
+        stop = "QUOTA_MET" if selection.complete else terminal or intake.stop_reason
+        summary = save_discovery(report, reader, intake, selection, rejected, settings.tasks, stop)
+        print(f"Discovery: qualified={len(selection.selected)}/{settings.tasks}; "
+              f"repositories={intake.counts['repositories_inspected']}; "
+              f"pulls={intake.counts['pulls_inspected']}; downloads={intake.counts['candidates_emitted']}", flush=True)
+        if not selection.complete:
+            print("Rejection reasons: " + top_reasons(summary), flush=True)
     if not selection.complete:
-        raise ValueError("QUALIFIED_TASK_QUOTA_NOT_MET; see discovery.json")
+        raise ValueError("QUALIFIED_TASK_QUOTA_NOT_MET: " + top_reasons(summary) + "; see discovery.json")
     return selection.selected

@@ -1,0 +1,108 @@
+name: Discovery yield and diagnostics
+on:
+  push:
+    branches: [fix/discovery-yield-diagnostics]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Apply exact small overlay to clean prior source and rerun regressions
+        run: python tools/package_discovery_fix.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: discovery-host-${{ matrix.os }}
+          path: |
+            artifacts/tests.xml
+            artifacts/discovery/
+            artifacts/discovery-fix/DISCOVERY_VALIDATION.json
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'windows-latest'
+        with:
+          name: discovery-fix-stage
+          path: artifacts/discovery-fix/
+          retention-days: 7
+  acquisition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Automatic repository and test-aware PR discovery using operator seed
+        run: python tools/verify_discovery_metadata.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Real native issue qualification and unchanged negative-positive controls
+        run: python tools/verify_native_issue.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: discovery-live-evidence
+          path: |
+            artifacts/discovery/
+            artifacts/native-issue.json
+            artifacts/issue-process-*.log
+          retention-days: 7
+  release:
+    needs: [host, acquisition]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: discovery-fix-stage
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: discovery-live-evidence
+          path: evidence
+      - name: Attach exact observed acquisition evidence, not an A-B claim
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          path = Path('release/DISCOVERY_VALIDATION.json')
+          value = json.loads(path.read_text())
+          intake = json.loads(Path('evidence/discovery/automatic-metadata.json').read_text())
+          issue = json.loads(Path('evidence/native-issue.json').read_text())
+          assert intake['automatic_repositories'] and intake['metadata_candidates']
+          assert not intake['builds_executed'] and not intake['paid_model_called']
+          assert issue['empty_patch'] == 'FAIL' and issue['reference_patch'] == 'PASS'
+          assert issue['replay_checked'] and not issue['paid_model_called']
+          value['automatic_metadata'] = {key: intake[key] for key in ('seed', 'metadata_candidates', 'counts', 'reason_counts')}
+          value['real_issue_qualification'] = issue
+          path.write_text(json.dumps(value, indent=2))
+          print(json.dumps(value, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discovery-fix
+          path: release/
+          retention-days: 7
+          if-no-files-found: error
