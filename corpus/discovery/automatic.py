@@ -1,4 +1,4 @@
-"""Seeded public repository/issue intake over the existing bounded GitHubReader."""
+"""Seeded repository/issue intake over the existing bounded GitHubReader."""
 import random
 from .candidates import candidate, quarantine_overlaps
 from .issue_queries import REPOSITORIES, PULLS, REPO
@@ -34,8 +34,11 @@ class AutomaticIntake:
             seen.add(repository.get("id"))
             if (any(repository.get(flag) for flag in ("isPrivate", "isFork", "isArchived"))
                     or (repository.get("primaryLanguage") or {}).get("name") != "Python"
-                    or (repository.get("licenseInfo") or {}).get("spdxId") not in self.policy.licenses):
+                    or (repository.get("licenseInfo") or {}).get("spdxId") not in policy.licenses):
                 self.rejected.append({"repository": name, "reason": "REPOSITORY_FILTER"})
+                continue
+            if not policy.repositories and not any(repository.get(key) for key in ("projectConfig", "setupScript", "setupConfig")):
+                self.rejected.append({"repository": name, "reason": "NO_CURRENT_PYTHON_PACKAGE_METADATA"})
                 continue
             yield repository, receipt
 

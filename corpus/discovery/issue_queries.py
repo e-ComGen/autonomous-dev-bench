@@ -1,12 +1,16 @@
-"""Narrow GraphQL reads; issue text is never used as host instructions."""
+"""GraphQL reads; package metadata only filters candidates and does not certify a build."""
+REPOSITORY_FIELDS = """
+  id nameWithOwner isPrivate isFork isArchived
+  primaryLanguage { name } licenseInfo { spdxId }
+  projectConfig: object(expression: "HEAD:pyproject.toml") { __typename }
+  setupScript: object(expression: "HEAD:setup.py") { __typename }
+  setupConfig: object(expression: "HEAD:setup.cfg") { __typename }
+"""
 REPOSITORIES = """
 query($query: String!, $cursor: String) {
   search(query: $query, type: REPOSITORY, first: 25, after: $cursor) {
     pageInfo { hasNextPage endCursor }
-    nodes { ... on Repository {
-      id nameWithOwner isPrivate isFork isArchived
-      primaryLanguage { name } licenseInfo { spdxId }
-    } }
+    nodes { ... on Repository { """ + REPOSITORY_FIELDS + """ } }
   }
 }
 """
@@ -29,9 +33,6 @@ query($query: String!, $cursor: String) {
 """
 REPO = """
 query($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    id nameWithOwner isPrivate isFork isArchived
-    primaryLanguage { name } licenseInfo { spdxId }
-  }
+  repository(owner: $owner, name: $name) { """ + REPOSITORY_FIELDS + """ }
 }
 """

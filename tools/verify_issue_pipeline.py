@@ -1,4 +1,4 @@
-"""Live GitHub/Docker qualification gate. It makes no paid model request."""
+"""Live GitHub/Docker qualification and replay gate. No paid model requests."""
 from pathlib import Path
 from dataclasses import replace
 import json
@@ -27,26 +27,30 @@ def main():
         runtime = DockerRuntime(ROOT, Path(temporary), settings)
         try:
             image = runtime.prepare_image()
-            # Exercise automatic repository search, independently of the stable integration pool.
-            reader = GitHubReader(os.environ["GITHUB_TOKEN"], report.cas, replace(policy, repository_pool=5))
-            discovered = list(AutomaticIntake(reader, replace(policy, repositories=(), repository_pool=5), 71).repositories())
+            # Exercise unconstrained public repository discovery separately from the stable CI pool.
+            automatic = replace(policy, repositories=(), repository_pool=30)
+            reader = GitHubReader(os.environ["GITHUB_TOKEN"], report.cas, automatic)
+            discovered = list(AutomaticIntake(reader, automatic, 71).repositories())
             if not discovered:
-                raise ValueError("Automatic repository query returned no eligible projects")
+                raise ValueError("Automatic query returned no eligible Python packages")
             prepared = prepare(ROOT, runtime, report, settings, policy, 17)
             path = save_lock(report, 17, settings, policy, prepared)
             restored_seed, restored = restore_lock(ROOT / path, ROOT, runtime, report, settings, policy)
             if restored_seed != 17 or [task for task, _ in prepared] != [task for task, _ in restored]:
-                raise ValueError("Exact selection replay changed tasks")
+                raise ValueError("Exact replay changed tasks")
             task, data = prepared[0]
             candidate = data["captured"]["candidate"]
             result = {"status": "TASKS_QUALIFIED", "live_model_called": False,
                       "repository": task.project_id, "issue": candidate["issues"][0]["number"],
                       "pull": candidate["pull_number"], "base": candidate["pre_fix_commit"],
                       "fix": candidate["reference_commit"], "qualification": data["qualification"],
+                      "qualification_repository_pool": list(policy.repositories),
                       "automatic_repository_results": [item[0]["nameWithOwner"] for item in discovered],
                       "replay_checked": True, "image": image}
             (evidence / "issue-qualification.json").write_text(json.dumps(result, indent=2))
             print(json.dumps({key: value for key, value in result.items() if key != "qualification"}, indent=2))
+            print("FAIL_TO_PASS:", len(data["qualification"]["fail_to_pass"]),
+                  "PASS_TO_PASS:", len(data["qualification"]["pass_to_pass"]))
         finally:
             for number, path in enumerate(list(runtime.scratch.rglob("process.log"))[:80]):
                 text = path.read_text(encoding="utf-8", errors="replace")[-12000:]

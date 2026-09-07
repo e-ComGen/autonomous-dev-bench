@@ -1,7 +1,6 @@
-"""Default end-to-end GitHub issue A/B composition, not a self-test substitution."""
+"""End-to-end real GitHub issue A/B; never substitute infrastructure self-tests."""
 from dataclasses import asdict
 from pathlib import Path
-import json
 import os
 import secrets
 import sys
@@ -23,7 +22,7 @@ def run_ab(root, arguments, report):
         raise ValueError("Python 3.12 or newer is required")
     settings, policy = load_campaign(Path(arguments.ab_config).resolve())
     if settings.task_source != "github_issue":
-        raise ValueError("Use explicit infrastructure tests for reconstruction fixtures; A/B uses real issues")
+        raise ValueError("A/B uses real issues; reconstruction is only an infrastructure fixture")
     seed = arguments.seed if arguments.seed is not None else secrets.randbits(64)
     if not 0 <= seed < 2**64:
         raise ValueError("Seed must be an unsigned 64-bit integer")
@@ -55,6 +54,13 @@ def run_ab(root, arguments, report):
             if only_qualify:
                 result["status"] = "TASKS_QUALIFIED"
             else:
+                from .cycle import preflight_cycle
+                result["cycle_preflight"] = []
+                for task, data in prepared:
+                    driver = NativeDriver(docker, docker.scratch / (task.task_id + "-preflight-native"), settings, "no-dispatch")
+                    checked = preflight_cycle(driver, data["evaluator"], data["files"], task,
+                        data["public_checks"], data["public_expected"], docker.scratch / (task.task_id + "-preflight"), settings)
+                    result["cycle_preflight"].append({"task": task.task_id, **checked})
                 docker.image = prepared[0][1]["image"]
                 boot = NativeDriver(docker, docker.scratch / "boot", settings, "no-provider",
                     workspace_adapter=RepositoryWorkspace(prepared[0][1]["captured"]["base_files"], settings.max_patch_bytes))
