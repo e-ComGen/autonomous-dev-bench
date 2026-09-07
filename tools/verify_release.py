@@ -15,6 +15,22 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def collect_result(checkout: Path, evidence: Path, mode: str) -> dict:
+    latest = checkout / ".bench/latest.json"
+    if not latest.is_file():
+        return {"status": "NO_REPORT"}
+    pointer = json.loads(latest.read_text(encoding="utf-8"))
+    summary = checkout / pointer["report"]
+    if not summary.resolve().is_relative_to((checkout / ".bench/runs").resolve()):
+        raise ValueError("Report pointer escaped run directory")
+    value = json.loads(summary.read_text(encoding="utf-8"))
+    shutil.copyfile(summary, evidence / (mode + ".json"))
+    for path in summary.parent.iterdir():
+        if path.is_file() and path.suffix in {".xml", ".log"}:
+            shutil.copyfile(path, evidence / path.name)
+    return value
+
+
 def run_release() -> None:
     stage = ROOT / "artifacts/autobenchmark"
     metadata = json.loads((stage / ".bench/release.json").read_text(encoding="utf-8"))
@@ -37,18 +53,16 @@ def run_release() -> None:
                                       encoding="utf-8", errors="replace", timeout=1200, shell=False)
             (evidence / (mode + ".log")).write_text(executed.stdout + "\n" + executed.stderr, encoding="utf-8")
             print(executed.stdout)
+            value = collect_result(checkout, evidence, mode)
             if executed.returncode:
                 print(executed.stderr, file=sys.stderr)
-                bootstrap = checkout / ".bench/bootstrap.log"
-                if bootstrap.is_file():
-                    print(bootstrap.read_text(encoding="utf-8", errors="replace")[-6000:], file=sys.stderr)
+                print(json.dumps(value, indent=2), file=sys.stderr)
+                for diagnostic in (evidence / "repository-tests.log", checkout / ".bench/bootstrap.log"):
+                    if diagnostic.is_file():
+                        print(diagnostic.name + ":\n" + diagnostic.read_text(encoding="utf-8", errors="replace")[-6000:], file=sys.stderr)
+                for config in (checkout / ".bench").glob("runtime-*/pyvenv.cfg"):
+                    print(config.read_text(encoding="utf-8"), file=sys.stderr)
                 raise RuntimeError(f"Packaged {mode} exited {executed.returncode}")
-            pointer = json.loads((checkout / ".bench/latest.json").read_text(encoding="utf-8"))
-            summary = checkout / pointer["report"]
-            value = json.loads(summary.read_text(encoding="utf-8"))
-            shutil.copyfile(summary, evidence / (mode + ".json"))
-            for junit in summary.parent.glob("*.xml"):
-                shutil.copyfile(junit, evidence / junit.name)
             expected = {"test": "CHECKED", "projects": "PREPARED", "plan": "PLAN_ONLY"}[mode]
             if value["status"] != expected:
                 raise ValueError(f"Incorrect packaged {mode} status: {value['status']}")
