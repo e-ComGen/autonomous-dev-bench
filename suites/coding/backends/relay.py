@@ -1,9 +1,7 @@
-"""Local-only transport for the existing bounded provider relay; no second model client."""
+"""Loopback transport for the existing provider relay; it is not OS secret isolation."""
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-import importlib.util
 import threading
-import sys
 import os
 
 
@@ -11,7 +9,6 @@ class LocalRelay:
     def __init__(self, root, directory, settings, tokens):
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
-        # Load the original standalone sidecar as a package so its relative ledger import works.
         from suites.coding.provider.server import Handler
         from suites.coding.provider.ledger import Ledger
         key = os.environ.get("DEEPSEEK_API_KEY", "").strip()

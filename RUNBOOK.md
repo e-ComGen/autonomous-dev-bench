@@ -1,63 +1,61 @@
-# Automatic real-issue A/B
+# Automatic real-issue A/B: native Windows or Docker
 
-Extract the whole release. Install Python 3.12+, Git and Docker Desktop in Linux-container mode
-(or Docker Engine on Linux), start Docker, and double-click START.cmd.
+Extract the whole archive. On Windows double-click START.cmd: native execution is now
+selected automatically. Docker, WSL, Hyper-V, administrator installation and reboot are
+NOT required by this backend. Python 3.12+ and Git are prerequisites. The launcher installs
+SDK/runtime and project Python dependencies in local venvs without changing global packages.
+See NATIVE_WINDOWS.md for the Russian operator guide.
 
-The launcher asks for a read-only GitHub token when absent. It automatically downloads the
-pinned private ADCP runtime, builds the native DSH image, searches public Python repositories,
-finds real issues with merged fixes, obtains exact before/after trees, derives an environment
-recipe, and repeatedly verifies bug reproduction and regression preservation.
-It rejects unsupported candidates within AB.toml preparation/API budgets and selects the
-requested random qualified tasks. It then asks for paid-run confirmation and a hidden DeepSeek
-key, runs both systems independently, and evaluates both resulting patches with protected tests.
-No manual repository path, issue selection, shell recipe, task generation or source editing is
-required. No reconstruction recipe is used as a fallback.
+The launcher obtains a GitHub read token for discovery and the existing private ADCP runtime,
+then requests explicit LOCAL consent before executing downloaded code on the host. It searches
+real public Python repositories/issues, captures before/after commits, prepares an environment,
+checks bug reproduction and regressions, freezes one task and executes both systems after
+separate paid-model authorization. Unsupported projects are rejected before enrollment.
+There is no replacement with reconstruction tasks or infrastructure self-tests.
+
+## Important native-mode boundary
+
+A native venv isolates Python dependencies, NOT your files, network or credentials on disk.
+Downloaded builds, tests and agent commands run as your user account. Their environment is
+filtered and they do not receive API keys, but same-user processes are not OS-isolated.
+Hidden tests are not supplied as agent input, yet native mode cannot prevent a process reading
+host files. Treat this as explicitly trusted local execution, not a hostile-code sandbox.
+CPU/RAM caps are Docker-only; reports mark them unenforced natively. Time/request/output
+limits remain active. Dollars are unpriced/null, not zero or a guaranteed spending cap.
 
 ## Commands
 
-- START.cmd: interactive automatic A/B.
-- START.cmd ab --allow-live-model: automation with keys already in environment.
-- START.cmd ab-preflight: acquisition, qualification, private runtime load and actual DSH boot; no paid prompt.
-- START.cmd qualify: acquisition/build/qualification only; no private ADCP or model required.
-- START.cmd test --offline: infrastructure self-tests only.
-- START.cmd ab --replay .bench/runs/<run>/selection.json --allow-live-model: exact retained task/image replay.
+START.cmd: interactive native A/B on Windows; auto selects Docker on Linux.
+START.cmd ab --backend native --allow-local-execution --allow-live-model: authorized automation.
+START.cmd ab-preflight --backend native --allow-local-execution: preparation and SDK/ADCP checks, no paid prompt.
+START.cmd qualify --backend native --allow-local-execution: real issue preparation only; no private ADCP/model needed.
+START.cmd test --offline: infrastructure self-tests only.
+START.cmd ab --backend docker: explicitly retain the container execution backend.
+Use python tools/prepare_ab.py with the same arguments outside Windows.
 
-AB.toml controls tasks, repeats, per-arm time/requests/output cap, RAM/CPU and patch bytes.
-Its [github] section controls search pool, age, stars, candidate/project limits, preparation
-and build time, public regression scope and required counts of distinct small/medium/large
-qualified projects. Size is measured in editable Python lines, not stars or download size.
-Quotas never silently substitute small projects for large ones. The bounded search is not a
-uniform sample of every GitHub repository. Exhaustion gives a reasoned incomplete result.
+AB.toml sets execution_backend=auto|native|docker, tasks/repeats, budgets and [github] selection
+policy. No explicit repository list is required. Required size quotas count distinct qualified
+projects; unsupported native packages are reported rather than replaced by small fixtures.
 
-## Result
+## Results and replay
 
-.bench/latest.json points to a compact summary and adjacent RESULT.md. Exact task metadata,
-base/fix commits, source/image/config identities, locked selection, both outcomes, request/token
-accounting, timing, patches, failures and diagnostic evidence are retained in the existing CAS.
-Large row sets and logs are referenced, not printed. Do not feed full CAS contents to Codex.
-A seed repeats sampling logic; exact replay requires selection.json, its CAS records and image IDs.
+.bench/latest.json -> summary.json and RESULT.md. Source, environment, task/issue, seed,
+execution backend and limits, both outcomes, token counts, patches and evidence are recorded.
+Large logs are referenced through the existing CAS or retained native provisioning logs.
+Do not dump .bench/native, wheelhouses, source bundles or full traces into model context.
 
-## Supported scope and limitations
+Replay uses --replay <selection.json>, the same settings/implementation and retained .bench.
+Native wheel manifests and interpreter bindings are checked before reuse. Each project actor
+and evaluation invocation receives a fresh venv installed without network from those wheels.
+A Docker image ID is not silently replaced with a native environment or vice versa.
 
-This release supports automatically buildable Python/pytest projects with a linked historical
-issue, an unambiguous supported Git history, changes to existing Python modules and separable
-regression tests. Config migrations, new/deleted production modules, binary/symlink worktrees,
-external services, unsupported test frameworks and large ADCP code views are rejected.
-Baseline public checks are a recorded bounded sample, not necessarily the project's full suite.
-Qualification is executable evidence, not proof that tests completely capture human intent.
-Historical public issues may have been in model training; no contamination-free claim is made.
+## Existing scope
 
-The full pre-fix repository is materialized in native agent/evaluator containers. For the actual
-legacy ADCP contract, all editable Python files form a bounded source view; non-code artifacts
-are present but protected. Both arms have the same common source/editing restrictions.
-B uses the actual PR28 AA/ECACC/BADC runtime, NOT an emulated loop and NOT the separate unpushed
-vNext adapter. Its exact private source is validated before loading and never distributed publicly.
+Python/pytest issues that change existing source files and have separable historical regression
+tests are supported. The public regression sample may not be the whole upstream test suite.
+Historical tasks may have been in model training. No contamination-free/general coding gain claim.
+B remains the real pinned PR28 AA/ECACC/BADC runtime, NOT a new emulated loop and NOT the earlier
+unpublished vNext archive. Private source is acquired on the authorized machine, not published.
 
-Agent networks are internal and credentials stay in a dedicated relay outside their containers.
-The relay routes only to the fixed official DeepSeek completion endpoint. Hidden test data and
-reference changes are never mounted in agents. Evaluators have no network. Project build scripts
-run inside disposable Docker build containers without user credentials. Docker administrators
-and the local operator are trusted; this is not a proof against malicious kernels/test evasion.
-Model request and per-request output caps include all native retries and cycle roles. Whole-arm
-work uses a shared deadline; container cleanup may add overhead. Costs remain unpriced/null:
-there is no claim of a guaranteed dollar cap. Unknown usage is never counted as free.
+CI evidence explicitly separates host tests, native SDK transport fixtures, actual upstream
+issue qualification and paid A/B. A fixture response or green self-test never proves model quality.

@@ -1,5 +1,6 @@
 """Native process backend for the SAME issue A/B, without Docker, WSL or system changes."""
 from pathlib import Path
+from uuid import uuid4
 import json
 import time
 from benchmark_core.execution import ProcessRunner, CommandSpec
@@ -33,7 +34,6 @@ class NativeRuntime:
         self.environments.load(identity)
 
     def endpoint(self, token):
-        # Boot never sends a model request. A live invocation needs an active relay.
         return self.relay.endpoint(token) if self.relay else "http://127.0.0.1:1/no-provider"
 
     def run(self, directory, *, network="none", entrypoint, timeout, input_path=None, evaluator=None):
@@ -42,7 +42,8 @@ class NativeRuntime:
         results.mkdir(exist_ok=True)
         workspace = directory / "workspace"
         deadline = time.monotonic() + timeout
-        project_python = self.environments.execution_python(self.image, directory, deadline)
+        environment_root = self.scratch / ("env-" + uuid4().hex[:10])
+        project_python = self.environments.execution_python(self.image, environment_root, deadline)
         environment = private_environment(directory / "process-home", project_python, workspace)
         environment.update(AUTOBENCH_WORKSPACE=str(workspace), AUTOBENCH_RESULTS=str(results),
             AUTOBENCH_INPUT=str(Path(input_path).resolve()) if input_path else "",
@@ -76,6 +77,7 @@ class NativeRuntime:
         return self.relay.receipt
 
     def close(self):
+        self.runner.cancel_running()
         if self.relay:
             self.relay.close()
             self.relay = None

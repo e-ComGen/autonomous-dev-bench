@@ -1,4 +1,4 @@
-"""Safe subprocess execution with timeouts and process-tree cleanup."""
+"""Subprocess ownership, explicit environments, timeouts and process-tree cleanup."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 import os
@@ -6,6 +6,7 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from typing import Mapping, Protocol, Sequence
 from .identity import FrozenDict
@@ -59,6 +60,8 @@ class SandboxProvider(Protocol):
 class ProcessRunner:
     def __init__(self, *, capabilities: IsolationCapabilities | None = None) -> None:
         self.capabilities = capabilities or local_process_capabilities()
+        self._active = {}
+        self._lock = threading.Lock()
 
     def run(self, command: CommandSpec | Sequence[str], *, policy: IsolationPolicy | None = None) -> ExecutionResult:
         spec = command if isinstance(command, CommandSpec) else CommandSpec(tuple(command))
@@ -77,20 +80,37 @@ class ProcessRunner:
         process = subprocess.Popen(list(spec.argv), cwd=spec.cwd, env=env, stdin=subprocess.PIPE if spec.stdin is not None else subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                    encoding="utf-8", errors="replace", shell=False, **kwargs)
+        with self._lock:
+            self._active[process.pid] = process
         try:
-            stdout, stderr = process.communicate(spec.stdin, timeout=spec.timeout_seconds)
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            timed_out = True
+            try:
+                stdout, stderr = process.communicate(spec.stdin, timeout=spec.timeout_seconds)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                self._terminate_tree(process)
+                stdout, stderr = process.communicate()
+            except BaseException:
+                self._terminate_tree(process)
+                process.communicate()
+                raise
+            return ExecutionResult(spec.argv, process.returncode, stdout, stderr, timed_out, time.monotonic() - started)
+        finally:
+            with self._lock:
+                self._active.pop(process.pid, None)
+
+    def cancel_running(self):
+        """Cancel only processes created by this runner instance, not unrelated user processes."""
+        with self._lock:
+            processes = tuple(self._active.values())
+        for process in processes:
             self._terminate_tree(process)
-            stdout, stderr = process.communicate()
-        return ExecutionResult(spec.argv, process.returncode, stdout, stderr, timed_out, time.monotonic() - started)
 
     @staticmethod
     def _terminate_tree(process: subprocess.Popen[str]) -> None:
-        if process.poll() is not None:
-            return
         if os.name == "nt":
+            if process.poll() is not None:
+                return
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False, check=False)
         else:
