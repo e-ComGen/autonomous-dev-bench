@@ -1,4 +1,4 @@
-"""Small command composition root; detailed responsibilities live in sibling modules."""
+"""Operator composition root. A/B is the default; self-tests remain explicit."""
 from dataclasses import asdict
 from pathlib import Path
 import argparse
@@ -13,10 +13,13 @@ from .report import Report, atomic_write
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Existing benchmark: one-click diagnostics and corpus preparation")
-    result.add_argument("command", nargs="?", default="test",
-                        choices=("test", "doctor", "catalog", "plan", "projects", "discover", "_project"))
+    result = argparse.ArgumentParser(description="Random paired coding benchmark and infrastructure diagnostics")
+    result.add_argument("command", nargs="?", default="ab",
+                        choices=("ab", "ab-preflight", "test", "doctor", "catalog", "plan", "projects", "discover", "_project"))
     result.add_argument("--config", default="BENCHMARK.toml")
+    result.add_argument("--ab-config", default="AB.toml")
+    result.add_argument("--seed", type=int)
+    result.add_argument("--allow-live-model", action="store_true")
     result.add_argument("--offline", action="store_true")
     result.add_argument("--allow-network", action="store_true")
     result.add_argument("--allow-local-build", action="store_true")
@@ -27,6 +30,9 @@ def parser() -> argparse.ArgumentParser:
 
 
 def execute(root: Path, arguments, config, catalog, report) -> dict:
+    if arguments.command in {"ab", "ab-preflight"}:
+        from suites.coding.service import run_ab
+        return run_ab(root, arguments, report)
     if arguments.command == "test":
         return run_checks(root, config, report)
     if arguments.command == "doctor":
@@ -81,7 +87,9 @@ def main(root: Path) -> int:
             return worker(root, arguments, config, catalog)
         result = execute(root, arguments, config, catalog, report)
         report.save(result)
-        return 2 if result["status"] in {"FAILED", "BLOCKED", "INCOMPLETE", "PARTIAL"} else 0
+        if result["status"] == "CANCELLED":
+            return 130
+        return 2 if result["status"] in {"FAILED", "BLOCKED", "INCOMPLETE", "PARTIAL", "AB_INCOMPLETE"} else 0
     except KeyboardInterrupt:
         if report is not None:
             report.save({"status": "CANCELLED"})

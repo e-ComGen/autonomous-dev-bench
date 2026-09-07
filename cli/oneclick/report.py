@@ -4,7 +4,6 @@ import json
 import os
 import tempfile
 from uuid import uuid4
-
 from benchmark_core.cas import FileSystemCAS
 from benchmark_core.identity import canonical_json
 
@@ -32,8 +31,8 @@ class Report:
         self.cas = FileSystemCAS(root / ".bench/cas")
 
     def save(self, result: dict) -> Path:
-        result = {**result, "schema": "autobench.operator_report/v1", "command": self.command,
-                  "authoritative": False, "live_model_called": False}
+        result = {**result, "schema": "autobench.operator_report/v1", "command": self.command, "authoritative": False}
+        result.setdefault("live_model_called", False)
         text = canonical_json(result)
         if len(text.encode("utf-8")) > 131072:
             raise ValueError("Operator report exceeds 128 KiB; put details in CAS")
@@ -45,5 +44,8 @@ class Report:
         atomic_write(self.root / ".bench/latest.json", json.dumps(pointer, indent=2) + "\n")
         print(f"{result.get('status', 'UNKNOWN')}: {self.command}")
         print(f"Summary: {path.relative_to(self.root)}")
-        print("Live model calls: 0. Coding quality score: not measured.")
+        if self.command in {"ab", "ab-preflight"}:
+            print(f"Live model called: {bool(result['live_model_called'])}; completed episodes: {len(result.get('rows', []))}")
+        else:
+            print("Live model calls: 0. Coding quality score: not measured.")
         return path

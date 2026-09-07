@@ -1,4 +1,4 @@
-"""Prepare one private venv and invoke the existing benchmark checkout."""
+"""Prepare one private venv; default dispatch is the real random A/B command."""
 from pathlib import Path
 import hashlib
 import json
@@ -15,8 +15,7 @@ from tools.launcher_lock import launcher_lock
 def invoke(argv: list[str], log: Path, environment: dict[str, str], timeout: int) -> None:
     with log.open("ab") as stream:
         result = subprocess.run(argv, cwd=ROOT, env=environment, stdin=subprocess.DEVNULL,
-                                stdout=stream, stderr=subprocess.STDOUT, timeout=timeout,
-                                shell=False)
+                                stdout=stream, stderr=subprocess.STDOUT, timeout=timeout, shell=False)
     if result.returncode:
         raise RuntimeError(f"Bootstrap exited {result.returncode}; see {log}")
 
@@ -47,12 +46,10 @@ def ensure_runtime(offline: bool) -> Path:
         raise ValueError(".bench must not be a symlink")
     state.mkdir(exist_ok=True)
     requirement = ROOT / "tools/requirements-launcher.txt"
-    identity = hashlib.sha256((str(ROOT) + sys.executable + sys.version).encode()
-                             + requirement.read_bytes()).hexdigest()
+    identity = hashlib.sha256((str(ROOT) + sys.executable + sys.version).encode() + requirement.read_bytes()).hexdigest()
     runtime = state / ("runtime-" + identity[:12])
     python = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    marker = runtime / ".ready"
-    log = state / "bootstrap.log"
+    marker, log = runtime / ".ready", state / "bootstrap.log"
     environment = clean_environment(ROOT)
     if marker.is_file() and marker.read_text() == identity and python.is_file():
         probe = subprocess.run([str(python), "-I", "-c", "import pytest; assert pytest.__version__ == '8.4.2'"],
@@ -62,8 +59,7 @@ def ensure_runtime(offline: bool) -> Path:
     print("Preparing isolated test environment; details: .bench/bootstrap.log", flush=True)
     if not python.is_file():
         invoke([sys.executable, "-I", "-m", "venv", str(runtime)], log, environment, 180)
-    install = [str(python), "-I", "-m", "pip", "--isolated", "install",
-               "--disable-pip-version-check", "--only-binary=:all:"]
+    install = [str(python), "-I", "-m", "pip", "--isolated", "install", "--disable-pip-version-check", "--only-binary=:all:"]
     wheelhouse = ROOT / "vendor/wheels"
     if verify_wheels(wheelhouse):
         install.extend(["--no-index", "--find-links", str(wheelhouse)])
@@ -77,15 +73,20 @@ def ensure_runtime(offline: bool) -> Path:
 
 
 def main() -> int:
-    arguments = sys.argv[1:] or ["test"]
+    arguments = sys.argv[1:] or ["ab"]
     try:
         with launcher_lock(ROOT / ".bench/launcher.lock"):
             python = ensure_runtime("--offline" in arguments)
             environment = clean_environment(ROOT, github=arguments[0] == "discover")
+            if arguments[0] in {"ab", "ab-preflight"}:
+                for key in ("DEEPSEEK_API_KEY", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
+                    if key in os.environ:
+                        environment[key] = os.environ[key]
+                environment["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))
             return subprocess.call([str(python), "-B", str(ROOT / "tools/bench.py"), *arguments],
                                    cwd=ROOT, env=environment, shell=False)
     except KeyboardInterrupt:
-        print("CANCELLED: no coding result is claimed", file=sys.stderr)
+        print("CANCELLED: inspect the retained report; no success is inferred", file=sys.stderr)
         return 130
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)

@@ -1,53 +1,56 @@
-# One-click benchmark foundation
+# Random coding A/B
 
-Распакуйте полный архив и откройте START.cmd. Нужны Python 3.11+ и Git.
-Устанавливаются только закреплённые тестовые библиотеки в .bench, не глобально.
-В готовом архиве есть wheels: первый тестовый запуск не требует GitHub/API/модели.
-Node, Docker, DeepSeek и ключ модели для самопроверки не нужны.
+Extract the COMPLETE private release. Install Python 3.12+, Git and Docker Desktop
+in Linux-container mode (or Docker Engine on Linux). Start Docker, then double-click
+`START.cmd`. A small container image is prepared automatically on first use.
+The launcher selects a random project and reconstruction task, qualifies its checks,
+boots the actual DSH SDK, asks for paid-run confirmation and a hidden DeepSeek key,
+then runs stock DSH and the real ADCP development cycle on identical inputs.
+Keys are not written to .env, logs, source snapshots or agent containers.
+The credential relay receives the key; Docker administrators remain trusted.
 
-`START.cmd test --offline` — команда для Codex без меню и паузы.
-Она запускает существующий suite, новые тесты и реальный локальный контроль:
-рабочий bundled-проект -> поломка provider -> обнаруженный FAIL -> восстановление.
-Это проверяет бенчмарк, а не качество программирования модели.
+## Commands
 
-Результат: .bench/latest.json -> короткий summary.json. Полные логи отдельно,
-не печатаются в контекст и игнорируются обычным поиском. Старые прогоны не затираются.
+`START.cmd ab --allow-live-model`: noninteractive A/B; set DEEPSEEK_API_KEY externally.
+`START.cmd ab --seed 123 --allow-live-model`: repeat a recorded selection.
+`START.cmd ab-preflight`: prepare/qualify and boot native SDK, no paid model call.
+`START.cmd test --offline`: infrastructure self-tests, no coding score.
+`START.cmd projects --offline`: verify bundled project sources.
+`START.cmd discover --allow-network`: separate public GitHub candidate discovery.
 
-## Уже закреплённые проекты
+A/B settings live in AB.toml: projects, tasks, repeats, full-arm time, model request
+quota, per-request output cap, input request size, CPU/RAM and patch size.
+Default is one task and one independent run per arm. Spend confirmation displays
+request/output/time caps. They are NOT hard monetary caps; actual dollars are null.
+Provider-reported token usage includes requests from every role and native retry.
+An interrupted/ambiguous provider usage record stays unknown rather than becoming zero.
 
-HTTPX, Requests, Pluggy остаются исходными ProjectSpec из этого репозитория.
-`START.cmd projects --offline` использует seed bundles в .bench/seeds.
-`START.cmd projects --allow-network` получает отсутствующие source pins и создаёт seeds.
-`--source-dir C:\\data\\sources` принимает <project_id>.bundle или <project_id>/.git.
-Источник проверяется по commit, полному source digest и license digest, не по имени папки.
-Данные не интерпретируются как квалифицированные coding-задачи.
+## Read results
 
-`START.cmd projects --allow-network --allow-local-build` выполняет существующий
-ProjectEnvironmentBuilder и объявленные baseline-команды в disposable worktree.
-Включайте только на машине, где допустимо запускать чужой код: это НЕ OS sandbox.
-Ключи, домашние настройки Git и пользовательские Python plugins в дочернюю среду не передаются.
-Сеть сборки этим режимом не ограничивается allowlist на уровне ОС; статус диагностический.
-Предел project_seconds охватывает весь worker; build/baseline уменьшают объявленные таймауты.
+`.bench/latest.json` points to one compact summary. It records seed, task, project,
+exact source commit/digest, image ID, ADCP identity, order, both arm outcomes,
+independent verdicts, time, request/token counts and CAS references to patches/details.
+Task qualification failures occur BEFORE enrollment; model failures after enrollment
+are retained. Hidden checks never feed repair. Each semantic role uses a fresh DSH home.
 
-## Кампания и intake
+## Exact scope of this release
 
-Измените BENCHMARK.toml и запустите `START.cmd plan`.
-Квоты large не заполняются medium-проектами. При нехватке виден quota_deficits.
-Масштаб берётся из существующей классификации, не выдаётся за измеренный LOC.
-План содержит одинаковые выбранные проекты для двух arms, repeat count и budget envelope.
-planned_usd_per_episode — расчётный параметр, НЕ действующий платёжный ограничитель.
-execution_ready=false до реального подключения квалифицированных задач и обоих arms.
+Six function-reconstruction smoke recipes use real pinned HTTPX, Requests and Pluggy
+Python packages. The original source supplies a positive control; the selected function
+body is removed, negative and preservation controls run, and only public examples are
+made available to agents. Hidden finite probes remain with the evaluator.
+This is not a mined-issue corpus, full regression suite, or evidence of large-project
+coding improvement. The source view is explicitly a PYTHON_PACKAGE_PROJECTION: binary
+assets and documentation are not accepted by the currently pinned ADCP snapshot format.
 
-`START.cmd discover --allow-network` с GITHUB_TOKEN только для чтения собирает публичные
-issue/merged-PR пары. Лимиты API/размера ответа, строгая история и карантин сохраняются.
-Raw issues остаются в evaluator-side CAS; summary содержит ссылки, не длинные тексты.
-Автосборка произвольного найденного проекта, закрытые тесты и живое DSH/ADCP A/B
-не добавлены и не заменены заглушками.
+The cycle is the actual AA-enabled PR28 runtime at b9c933bd7727b86149da891c323a27cde5afc956.
+It composes the existing ECACC verifier and BADC controller through supported role ports.
+It does not claim the unpushed vNext CapabilityGateway adapter was loaded.
 
-## Обслуживание
+Agent containers have no host key, Docker socket, hidden cases or reference patch.
+Their Docker network is internal; only a run-scoped relay routes completion requests
+to the fixed official DeepSeek endpoint. Evaluator containers have no network.
+This is finite test-based acceptance, not a proof against an actively malicious candidate.
 
-Коды выхода: 0 — команда закончилась; 2 — BLOCKED/FAILED/INCOMPLETE; 130 — отмена.
-Всегда проверяйте поле status: успешное построение PLAN_ONLY не равно benchmark PASS.
-Не удаляйте .bench во время выполнения. Удаление .bench сбрасывает только локальные
-окружения, кеши и отчёты; исходные проекты и production ADCP не меняются.
-Переезд архива создаёт новое привязанное окружение, не использует старый venv вслепую.
+The self-test fixture provider exists only under tests/; no fixture result is used by
+`ab`. CI transport tests do not demonstrate that a paid model solves these tasks.
