@@ -24,7 +24,7 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - name: Existing regression and native boundary tests
         run: python -m pytest -q --junitxml=artifacts/tests.xml
-      - name: Real SDK boot and streaming fixture session WITHOUT Docker
+      - name: Real SDK boot, streaming and actual shell tool WITHOUT Docker
         run: python tools/verify_native_process.py
       - name: Real issue discovery, native install, repeated qualification and exact replay
         run: python tools/verify_native_issue.py
@@ -69,6 +69,8 @@ jobs:
         with:
           pattern: native-evidence-*
           path: release/.bench/validation-native
+      - name: Attach checked same-commit native validation evidence
+        run: python release/tools/attach_native_validation.py release
       - uses: actions/upload-artifact@v4
         with:
           name: autobench-windows-native

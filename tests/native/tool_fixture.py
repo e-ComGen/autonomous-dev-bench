@@ -9,7 +9,7 @@ def shell_call(tools):
     for entry in tools:
         function = entry.get("function", {})
         name = function.get("name", "")
-        if not any(word in name.lower() for word in ("bash", "shell", "powershell", "exec", "run_command")):
+        if not any(word in name.lower() for word in ("bash", "pwsh", "shell", "powershell", "exec", "run_command")):
             continue
         schema = function.get("parameters", {})
         properties = schema.get("properties", {})
