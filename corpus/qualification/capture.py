@@ -1,10 +1,27 @@
-"""Read exact Git snapshots through existing cache/worktree owners. Never execute source."""
+"""Exact Git snapshots through existing cache/worktree owners. No source execution."""
 from pathlib import Path
+import subprocess
 from benchmark_core.checkout import SharedGitCache
 from benchmark_core.worktree import WorktreeManager
 from benchmark_core.identity import CommitPin, Sha256Digest
-from .files import capture_files, code_view, is_code, is_test, safe_path, scale
+from .files import capture_files, code_view, scale
+from .changes import partition
 from .policy import REPOSITORY
+
+
+def canonical_modes(directory):
+    completed = subprocess.run(["git", "-C", str(directory), "ls-files", "--stage", "-z"],
+                               capture_output=True, check=True, timeout=30)
+    result = {}
+    for item in completed.stdout.split(b"\0"):
+        if not item:
+            continue
+        metadata, path = item.split(b"\t", 1)
+        mode, _, stage = metadata.split()
+        if stage != b"0" or mode not in (b"100644", b"100755"):
+            raise ValueError("UNSUPPORTED_GIT_FILE_MODE")
+        result[path.decode("utf-8")] = mode == b"100755"
+    return result
 
 
 def acquire_task(candidate, root, policy):
@@ -18,25 +35,15 @@ def acquire_task(candidate, root, policy):
         snapshot = cache.ensure("https://github.com/" + name + ".git", str(CommitPin(candidate[key])))
         with manager.disposable(snapshot) as worktree:
             files = capture_files(worktree.path, policy)
+            modes = canonical_modes(worktree.path)
+            if set(files) != set(modes):
+                raise ValueError("CAPTURE_DIFFERS_FROM_PINNED_GIT_PATHS")
+            for relative, record in files.items():
+                record["executable"] = modes[relative]
             manager.verify_pristine(worktree, expected_source_tree_digest=snapshot.source_tree_digest)
         snapshots.append((snapshot, files))
     (base, before), (fixed, after) = snapshots
-    changed = {path for path in set(before) | set(after) if before.get(path) != after.get(path)}
-    code = sorted(path for path in changed if is_code(path))
-    tests = sorted(path for path in changed if is_test(path) and Path(path).suffix == ".py")
-    if not code or not tests:
-        raise ValueError("NO_CODE_AND_TEST_CHANGE")
-    if any(path not in before or path not in after for path in code):
-        raise ValueError("SOURCE_CREATION_DELETION_UNSUPPORTED")
-    if any(path not in after or Path(path).name == "conftest.py" for path in tests):
-        raise ValueError("TEST_HARNESS_CHANGE_UNSUPPORTED")
-    # Documentation/news can accompany a bug fix; build/config/fixture changes cannot.
-    harmless = {path for path in changed if Path(path).suffix in {".md", ".rst", ".txt"}
-                or "news" in Path(path).parts or "changelog" in Path(path).parts}
-    if changed - set(code) - set(tests) - harmless:
-        raise ValueError("NON_PYTHON_OR_ENVIRONMENT_CHANGE")
-    for path in changed:
-        safe_path(path)
+    code, tests = partition(before, after)
     projection = code_view(before, policy.max_code_bytes)
     if any(before[path]["executable"] != after[path]["executable"] for path in code):
         raise ValueError("SOURCE_MODE_CHANGE_UNSUPPORTED")

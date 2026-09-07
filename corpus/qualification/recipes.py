@@ -1,4 +1,4 @@
-"""Derive a bounded Python/pytest build recipe from the pre-fix tree only."""
+"""Bounded Python/pytest build recipes derived only from the pre-fix repository."""
 from pathlib import PurePosixPath
 import configparser
 import json
@@ -24,8 +24,8 @@ def infer_recipe(files):
                                     or PurePosixPath(path).name.endswith("_test.py")))
     if not test_files:
         raise ValueError("PYTEST_TEST_FILES_MISSING")
-    return {"version": "python-pytest-recipe/1", "install": install,
-            "requirements": list(requirements[:2]), "public_candidates": test_files}
+    return {"version": "python-pytest-recipe/2", "install": install, "requirements": list(requirements[:2]),
+            "public_candidates": test_files, "environment": {"SETUPTOOLS_SCM_PRETEND_VERSION": "0.0.0"}}
 
 
 def build_project_image(docker, task, policy, deadline):
@@ -36,9 +36,19 @@ def build_project_image(docker, task, policy, deadline):
     recipe = infer_recipe(task["base_files"])
     identity = str(Sha256Digest.of({"base_image": base_image, "tree": task["base_source_digest"], "recipe": recipe}))
     tag = "autobenchmark-project:" + identity.removeprefix("sha256:")[:24]
-    inspected = docker.command(("image", "inspect", tag, "--format", "{{.Id}}"), required=False)
+    inspected = docker.command(("image", "inspect", tag, "--format", "{{.Id}} {{index .Config.Labels \"autobenchmark.project\"}}"), required=False)
     if inspected.succeeded:
-        return inspected.stdout.strip(), recipe
+        image, label = inspected.stdout.strip().split()
+        if label != identity:
+            raise ValueError("PROJECT_IMAGE_INPUT_CONFLICT")
+        return image, recipe
+    # BuildKit resolves a bare sha256:ID as a registry tag. Bind a local named alias,
+    # verify its ID, and record the immutable original in the task fingerprint.
+    base_tag = "autobenchmark-base:" + base_image.removeprefix("sha256:")[:24]
+    docker.command(("image", "tag", base_image, base_tag))
+    resolved = docker.command(("image", "inspect", base_tag, "--format", "{{.Id}}"))
+    if resolved.stdout.strip() != base_image:
+        raise ValueError("BASE_IMAGE_ALIAS_CONFLICT")
     directory = docker.scratch / ("build-" + identity[-12:])
     directory.mkdir()
     materialize(directory / "source", task["base_files"])
@@ -46,7 +56,7 @@ def build_project_image(docker, task, policy, deadline):
     (directory / "install.py").write_text(installer, encoding="utf-8")
     (directory / "recipe.json").write_text(json.dumps(recipe), encoding="utf-8")
     (directory / "Dockerfile").write_text(
-        f"FROM {base_image}\nUSER root\nRUN /usr/local/bin/python -m venv /opt/project\n"
+        f"FROM {base_tag}\nUSER root\nRUN /usr/local/bin/python -m venv /opt/project\n"
         "COPY source/ /workspace/\nCOPY recipe.json /recipe.json\nCOPY install.py /install.py\n"
         "WORKDIR /workspace\nENV SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0\n"
         "RUN /usr/local/bin/python /install.py && /opt/project/bin/python -m pip freeze --all > /opt/project-freeze.txt\n"
@@ -59,6 +69,6 @@ def build_project_image(docker, task, policy, deadline):
     result = docker.command(("build", "--label", "autobenchmark.project=" + identity, "-t", tag, directory), seconds, required=False)
     (directory / "process.log").write_text(result.stdout[-32768:] + result.stderr[-32768:], encoding="utf-8")
     if not result.succeeded:
-        raise RuntimeError("PROJECT_BUILD_FAILED")
+        raise RuntimeError("PROJECT_BUILD_FAILED: " + result.stderr[-1800:])
     image = docker.command(("image", "inspect", tag, "--format", "{{.Id}}"))
     return image.stdout.strip(), recipe

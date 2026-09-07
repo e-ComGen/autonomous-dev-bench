@@ -1,4 +1,4 @@
-"""Automatic candidate-to-qualified-task pipeline; no model calls or synthetic fallback."""
+"""Real candidate-to-qualified-task pipeline; no model calls or synthetic fallback."""
 from dataclasses import asdict
 from pathlib import Path
 import json
@@ -12,17 +12,19 @@ from corpus.qualification.qualifier import qualify, IssueTask
 from corpus.qualification.evaluator import PytestEvaluator
 from corpus.qualification.selection import Selection
 from cli.oneclick.report import atomic_write
+from .fingerprint import implementation_fingerprint
 
 
 def save_lock(report, seed, settings, policy, selected):
     entries = []
     for task, prepared in selected:
-        value = {key: item for key, item in prepared.items() if key != "evaluator"}
+        value = {key: item for key, item in prepared.items() if key not in {"evaluator", "workspace_adapter"}}
         value["task"] = asdict(task)
         entries.append(report.cas.put_text(canonical_json(value)))
     lock = {"schema": "autobench.github_selection/v1", "seed": seed, "tasks": entries,
             "settings_digest": str(Sha256Digest.of(asdict(settings))),
-            "policy_digest": str(Sha256Digest.of(asdict(policy)))}
+            "policy_digest": str(Sha256Digest.of(asdict(policy))),
+            "implementation_digest": implementation_fingerprint(report.root)}
     lock["content_digest"] = str(Sha256Digest.of(lock))
     path = report.directory / "selection.json"
     atomic_write(path, json.dumps(lock, indent=2))
@@ -38,6 +40,8 @@ def restore_lock(path, root, docker, report, settings, policy):
     if (lock["settings_digest"] != str(Sha256Digest.of(asdict(settings)))
             or lock["policy_digest"] != str(Sha256Digest.of(asdict(policy)))):
         raise ValueError("REPLAY_CONFIGURATION_CHANGED")
+    if lock.get("implementation_digest") != implementation_fingerprint(root):
+        raise ValueError("REPLAY_IMPLEMENTATION_CHANGED")
     selected = []
     for ref in lock["tasks"]:
         value = json.loads(report.cas.get_text(ref))
@@ -80,7 +84,7 @@ def prepare(root, docker, report, settings, policy, seed):
                 if selection.complete:
                     break
             except (OSError, ValueError, RuntimeError) as error:
-                rejected.append({"repository": name, "pull": candidate["pull_number"], "reason": str(error)[:1000]})
+                rejected.append({"repository": name, "pull": candidate["pull_number"], "reason": str(error)[:2000]})
                 print("Rejected: " + str(error).split(":", 1)[0][:100], flush=True)
     finally:
         details = {"qualification_rejections": rejected, "intake_rejections": intake.rejected,

@@ -1,4 +1,4 @@
-"""Small operator summaries backed by the existing CAS, not new evidence authority."""
+"""Compact operator output; complete evidence lives in the existing digest-verifying CAS."""
 from pathlib import Path
 import json
 import os
@@ -24,28 +24,42 @@ def atomic_write(path: Path, content: str) -> None:
 
 class Report:
     def __init__(self, root: Path, command: str):
-        self.root = root
-        self.command = command
+        self.root, self.command = root, command
         self.directory = root / ".bench/runs" / uuid4().hex
         self.directory.mkdir(parents=True)
         self.cas = FileSystemCAS(root / ".bench/cas")
 
     def save(self, result: dict) -> Path:
-        result = {**result, "schema": "autobench.operator_report/v1", "command": self.command, "authoritative": False}
-        result.setdefault("live_model_called", False)
-        text = canonical_json(result)
+        value = {**result, "schema": "autobench.operator_report/v1", "command": self.command, "authoritative": False}
+        value.setdefault("live_model_called", False)
+        full_ref = self.cas.put_text(canonical_json(value))
+        for key in ("rows", "order", "qualified_tasks", "rejections"):
+            if key in value and len(canonical_json(value[key]).encode("utf-8")) > 16384:
+                value[key + "_ref"] = self.cas.put_text(canonical_json(value[key]))
+                value[key + "_count"] = len(value[key])
+                del value[key]
+        text = canonical_json(value)
         if len(text.encode("utf-8")) > 131072:
             raise ValueError("Operator report exceeds 128 KiB; put details in CAS")
-        reference = self.cas.put_text(text)
         path = self.directory / "summary.json"
-        atomic_write(path, json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-        pointer = {"status": result.get("status"), "command": self.command,
-                   "report": str(path.relative_to(self.root)), "cas_ref": reference}
+        atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+        pointer = {"status": value.get("status"), "command": self.command,
+                   "report": str(path.relative_to(self.root)), "cas_ref": full_ref}
         atomic_write(self.root / ".bench/latest.json", json.dumps(pointer, indent=2) + "\n")
-        print(f"{result.get('status', 'UNKNOWN')}: {self.command}")
+        if self.command in {"ab", "ab-preflight", "qualify"}:
+            self._readable(result)
+        print(f"{value.get('status', 'UNKNOWN')}: {self.command}")
         print(f"Summary: {path.relative_to(self.root)}")
-        if self.command in {"ab", "ab-preflight"}:
-            print(f"Live model called: {bool(result['live_model_called'])}; completed episodes: {len(result.get('rows', []))}")
-        else:
-            print("Live model calls: 0. Coding quality score: not measured.")
+        print(f"Live model called: {bool(value['live_model_called'])}; completed episodes: {len(result.get('rows', []))}")
         return path
+
+    def _readable(self, result):
+        lines = ["# Coding A/B", "", "Status: " + str(result.get("status")), "",
+                 "Seed: " + str(result.get("seed")), "", "| Arm | Solved | Episodes |", "| --- | ---: | ---: |"]
+        for name, arm in result.get("comparison", {}).items():
+            lines.append(f"| {name} | {arm['solved']} | {arm['episodes']} |")
+        lines.extend(("", "Costs are not priced. Unknown usage is not zero.",
+                      "Functional test acceptance is not a universal coding-quality score."))
+        if result.get("reason"):
+            lines.extend(("", "Reason: " + str(result["reason"])))
+        atomic_write(self.directory / "RESULT.md", "\n".join(lines) + "\n")
