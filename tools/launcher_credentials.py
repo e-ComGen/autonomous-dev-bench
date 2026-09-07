@@ -1,16 +1,14 @@
-"""Explicit host-only credentials. Parse data, never source a shell or print secrets."""
+"""Host-only credentials parsed as data; paid execution is an operator entrypoint policy."""
 from contextlib import contextmanager
 from pathlib import Path
 import os
 
-KEYS = ("GITHUB_TOKEN", "GH_TOKEN", "DEEPSEEK_API_KEY", "AUTOBENCH_ALLOW_PAID")
+KEYS = ("GITHUB_TOKEN", "GH_TOKEN", "DEEPSEEK_API_KEY")
 TEMPLATE = """# Keep this file private. Values are plain text, not encrypted.
-# Read-only GitHub access is required for discovery and the private ADCP source.
+# START.cmd runs paid A/B by default. Request/time budgets remain in AB.toml.
+# GitHub read access is needed for discovery and the private ADCP source.
 GITHUB_TOKEN=
 DEEPSEEK_API_KEY=
-# Change to YES only to authorize paid benchmark calls without another prompt.
-# Request/time caps are configured in AB.toml; there is no guaranteed dollar cap.
-AUTOBENCH_ALLOW_PAID=NO
 """
 
 
@@ -24,6 +22,7 @@ def parse_credentials(content):
             line = line[7:].lstrip()
         key, separator, value = line.partition("=")
         key = key.strip()
+        # Obsolete switches and unrelated settings do not affect startup.
         if key not in KEYS:
             continue
         if not separator or key in result:
@@ -50,11 +49,9 @@ def read_credentials(root, environment=None):
             raise ValueError("CREDENTIAL_CONFIG_SIZE_LIMIT")
         values = parse_credentials(path.read_text(encoding="utf-8-sig"))
     clean = {key: environment.get(key, "").strip() for key in KEYS}
-    # An environment alias must not lose to a different alias in a file.
     github = clean["GITHUB_TOKEN"] or clean["GH_TOKEN"] or values.get("GITHUB_TOKEN") or values.get("GH_TOKEN", "")
     return {"GITHUB_TOKEN": github, "GH_TOKEN": github,
-            "DEEPSEEK_API_KEY": clean["DEEPSEEK_API_KEY"] or values.get("DEEPSEEK_API_KEY", ""),
-            "AUTOBENCH_ALLOW_PAID": clean["AUTOBENCH_ALLOW_PAID"] or values.get("AUTOBENCH_ALLOW_PAID", "NO")}
+            "DEEPSEEK_API_KEY": clean["DEEPSEEK_API_KEY"] or values.get("DEEPSEEK_API_KEY", "")}
 
 
 def create_template(root):
@@ -67,10 +64,6 @@ def create_template(root):
     except FileExistsError:
         pass
     return path
-
-
-def paid_authorized(value):
-    return value.strip().casefold() in {"yes", "true", "1", "on"}
 
 
 @contextmanager

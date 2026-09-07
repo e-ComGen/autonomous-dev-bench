@@ -1,17 +1,16 @@
-"""No-input operator launch. Local consent is explicit in this requested entrypoint.
+"""No-input operator launch with paid A/B explicitly requested as the default.
 
-Paid calls require a separate persisted opt-in or --allow-live-model. Keys are never
-asked for on stdin, passed in argv or logged. Existing runtime and loop are reused.
+Keys are never requested on stdin, passed in argv or logged. Diagnostic commands
+remain non-billable. Existing runtime, budgets and development loop are reused.
 """
 from pathlib import Path
 import json
-import os
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
-from tools.launcher_credentials import read_credentials, create_template, host_credentials, paid_authorized
+from tools.launcher_credentials import read_credentials, create_template, host_credentials
 
 
 class ConfigurationRequired(ValueError):
@@ -34,16 +33,15 @@ def configured_arguments(root, arguments, values):
     private_present = (Path(root) / ".bench/adcp/SOURCE.json").is_file()
     need_github = not replay or (command in {"ab", "ab-preflight"} and not private_present)
     missing = []
-    if need_github and not values["GITHUB_TOKEN"]:
+    if need_github and not values.get("GITHUB_TOKEN"):
         missing.append("GITHUB_TOKEN")
     if command == "ab":
-        if not values["DEEPSEEK_API_KEY"]:
+        if not values.get("DEEPSEEK_API_KEY"):
             missing.append("DEEPSEEK_API_KEY")
+        # The operator explicitly selected always-paid A/B for this entrypoint.
+        # Preserve the existing execution contract instead of adding another gate.
         if "--allow-live-model" not in arguments:
-            if paid_authorized(values["AUTOBENCH_ALLOW_PAID"]):
-                arguments.append("--allow-live-model")
-            else:
-                missing.append("AUTOBENCH_ALLOW_PAID=YES (paid API calls)")
+            arguments.append("--allow-live-model")
     if missing:
         create_template(root)
         raise ConfigurationRequired("Set " + ", ".join(missing) + " in .env next to START.cmd. No model was called.")
@@ -61,7 +59,8 @@ def save_startup(root, status, command, reason=None):
     if destination.is_symlink():
         raise ValueError("Startup report must not be a symlink")
     result = {"schema": "autobench.startup/v1", "status": status, "command": command,
-              "launcher": "no-input-v1", "local_consent_prompt": False}
+              "launcher": "paid-ab-default-v2", "local_consent_prompt": False,
+              "paid_ab_default": True}
     if reason:
         result["reason"] = reason
     destination.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -82,15 +81,15 @@ def main(argv=None, root=ROOT):
             raise ValueError("Real issue acquisition/A-B cannot run offline; test --offline is separate")
         values = read_credentials(root)
         arguments = configured_arguments(root, arguments, values)
-        # Permit only the host acquisition process to inherit these credentials.
-        # The established builder/agent environment allowlists remain unchanged.
         with host_credentials(values):
             if command in {"ab", "ab-preflight"}:
                 from tools.prepare_ab import prepare_runtime
                 if root != ROOT:
                     raise ValueError("Runtime acquisition is bound to the current release root")
                 prepare_runtime()
-            print("Launcher: no-input-v1; local permission prompt disabled", flush=True)
+            print("Launcher: paid-ab-default-v2; confirmation prompts disabled", flush=True)
+            if command == "ab":
+                print("A/B uses the paid provider; configured request/time budgets remain active.", flush=True)
             print("GitHub credential: " + ("present" if values["GITHUB_TOKEN"] else "not required for replay"), flush=True)
             save_startup(root, "DISPATCHING", command)
             return subprocess.call([sys.executable, "-I", str(root / "tools/launch.py"), *arguments],
@@ -98,7 +97,6 @@ def main(argv=None, root=ROOT):
     except KeyboardInterrupt:
         return 130
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
-        # Messages describe fields or stages; never interpolate credential values.
         message = str(error)[:1000]
         print("CONFIG_REQUIRED: " + message if isinstance(error, ConfigurationRequired) else "BLOCKED: " + message,
               file=sys.stderr)
