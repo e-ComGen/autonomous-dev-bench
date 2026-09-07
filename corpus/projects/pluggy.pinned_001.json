@@ -6,7 +6,7 @@
     "commit_sha": "fd08ab5f811a9b2fa9124ae8cbbd393221151e2c",
     "source_tree_digest": "sha256:82bdbb16b3d3468bd5355b3fc0c10993537a144d514e999d4dc03a04e47eede9"
   },
-  "legal": {"license_spdx": "MIT", "license_file": "LICENSE", "license_file_digest": "sha256:de91589cbcc498cb36d3f979e39d4fb1ea1164d5331f6e0ea90a986525310d51"},
+  "legal": {"license_spdx": "MIT", "license_file": "LICENSE", "license_file_digest": "sha256:d6b65e6c213a5d0b577911d34d6e5949b9f59d76c238c5071a2f3fc16cfb2606"},
   "platforms": {"operating_systems": ["linux", "windows"], "python": ["3.11", "3.12", "3.13"]},
   "bootstrap": {
     "adapter_id": "python-standard-v1",

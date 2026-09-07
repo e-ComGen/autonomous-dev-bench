@@ -1,4 +1,4 @@
-"""Read-only diagnosis of file pins inside already tree-verified public Git commits."""
+"""Verify file pins inside already tree-verified public Git commits; never update them."""
 from pathlib import Path
 import hashlib
 import json
@@ -8,7 +8,6 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
 from benchmark_core.checkout import SharedGitCache
-from benchmark_core.identity import Sha256Digest
 from benchmark_core.manifest import load_json
 
 
@@ -29,13 +28,14 @@ def audit() -> None:
                                      capture_output=True, timeout=30).stdout
             record = {"project": data["project_id"], "commit": snapshot.commit,
                       "source_tree_verified": True, "file": relative, "expected": expected,
-                      "raw_sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
-                      "canonical_text_sha256": str(Sha256Digest.of(payload.decode("utf-8")))}
+                      "raw_sha256": "sha256:" + hashlib.sha256(payload).hexdigest()}
             result.append(record)
             print(json.dumps(record, sort_keys=True))
     target = ROOT / "artifacts/pin-audit.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    if any(item["expected"] != item["raw_sha256"] for item in result):
+        raise ValueError("Pinned file bytes differ; no manifest was changed")
 
 
 if __name__ == "__main__":
