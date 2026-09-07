@@ -1,4 +1,4 @@
-"""Immutable per-arm settings; GitHub intake settings are a separate responsibility."""
+"""Immutable per-arm settings; execution mechanism is separate from task/control ownership."""
 from dataclasses import dataclass, fields
 from pathlib import Path
 import tomllib
@@ -10,6 +10,7 @@ class Settings:
     model: str = "deepseek-v4-flash"
     projects: tuple[str, ...] = ("httpx.pinned_001", "requests.pinned_001", "pluggy.pinned_001")
     task_source: str = "github_issue"
+    execution_backend: str = "auto"
     tasks: int = 1
     repeats: int = 1
     arm_seconds: int = 600
@@ -34,6 +35,8 @@ class Settings:
             raise ValueError("Unsupported explicitly selected official DSH model")
         if self.task_source not in {"github_issue", "reconstruction"}:
             raise ValueError("Unknown task_source")
+        if self.execution_backend not in {"auto", "native", "docker"}:
+            raise ValueError("Unknown execution_backend")
         if not self.projects or len(self.projects) != len(set(self.projects)):
             raise ValueError("projects must be nonempty and unique")
         if any(project not in {"httpx.pinned_001", "requests.pinned_001", "pluggy.pinned_001"} for project in self.projects):

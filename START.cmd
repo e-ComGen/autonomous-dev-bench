@@ -14,7 +14,7 @@ if not errorlevel 1 (
 )
 where python >nul 2>nul
 if errorlevel 1 (
-  echo BLOCKED: install Python 3.12 or newer, then run START.cmd again.
+  echo BLOCKED: Python 3.12 or newer is required. Native mode does not need Docker or WSL.
   goto cleanup
 )
 python -I tools\prepare_ab.py %*

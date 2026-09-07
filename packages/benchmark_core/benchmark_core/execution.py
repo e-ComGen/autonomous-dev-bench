@@ -1,6 +1,5 @@
 """Safe subprocess execution with timeouts and process-tree cleanup."""
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
@@ -9,7 +8,6 @@ import subprocess
 import tempfile
 import time
 from typing import Mapping, Protocol, Sequence
-
 from .identity import FrozenDict
 from .isolation import IsolationCapabilities, IsolationPolicy, IsolationUnavailable, SandboxAttestation, local_process_capabilities, validate_isolation
 
@@ -21,6 +19,7 @@ class CommandSpec:
     cwd: str | None = None
     environment: Mapping[str, str] = field(default_factory=dict)
     stdin: str | None = None
+    inherit_environment: bool = True
 
     def __post_init__(self) -> None:
         argv = tuple(self.argv)
@@ -28,6 +27,8 @@ class CommandSpec:
             raise ValueError("argv must be a non-empty sequence of non-empty strings")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if type(self.inherit_environment) is not bool:
+            raise ValueError("inherit_environment must be boolean")
         environment = dict(self.environment)
         if any(not isinstance(key, str) or not isinstance(value, str) for key, value in environment.items()):
             raise ValueError("environment keys and values must be strings")
@@ -51,7 +52,6 @@ class ExecutionResult:
 
 class SandboxProvider(Protocol):
     """Operator-trusted provider that enforces and attests OS-level confinement."""
-
     def attest(self) -> SandboxAttestation: ...
     def run(self, command: CommandSpec, *, policy: IsolationPolicy) -> ExecutionResult: ...
 
@@ -66,7 +66,7 @@ class ProcessRunner:
         validate_isolation(effective, self.capabilities)
         if effective.authoritative:
             raise IsolationUnavailable("plain ProcessRunner cannot provide authoritative OS confinement; configure an attested SandboxProvider")
-        env = os.environ.copy()
+        env = os.environ.copy() if spec.inherit_environment else {}
         env.update(spec.environment)
         kwargs: dict[str, object] = {}
         if os.name == "nt":
@@ -98,5 +98,7 @@ class ProcessRunner:
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=2)
             except (ProcessLookupError, subprocess.TimeoutExpired):
-                try: os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError: pass
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass

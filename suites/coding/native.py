@@ -27,8 +27,9 @@ class NativeDriver:
             write_files(directory / "workspace", files)
         inputs = directory / "input"
         inputs.mkdir()
+        endpoint = self.docker.endpoint(self.token) if hasattr(self.docker, "endpoint") else f"http://model-relay:8787/{self.token}"
         request = {"model": self.settings.model, "max_tokens": self.settings.output_tokens_per_request,
-                   "endpoint": f"http://model-relay:8787/{self.token}", "timeout": remaining,
+                   "endpoint": endpoint, "timeout": remaining,
                    "session_id": "bench-" + uuid4().hex, "prompt": prompt, "boot_only": boot_only}
         (inputs / "request.json").write_text(json.dumps(request), encoding="utf-8")
         execution = self.docker.run(directory, network=self.docker.network if not boot_only else "none",
@@ -60,7 +61,7 @@ class NativeDriver:
 
 def stock_arm(driver, files, objective):
     result, candidate = driver.invoke(files,
-        objective + "\nWork in /workspace. Inspect and edit the project using your normal tools. "
+        objective + "\nWork in the current repository directory. Inspect and edit the project using your normal tools. "
         "Run python -B public_tests.py as appropriate. Do not change tests, configuration, TASK.md or public_tests.py. "
         "Deliver the implementation, not just a proposed patch in your final message.")
     return candidate, {"status": "RETURNED" if result.get("finish_reason") == "completed" else "NATIVE_INCOMPLETE",

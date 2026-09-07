@@ -54,7 +54,7 @@ class Coder:
 
     def code(self, context):
         files = dict(context.source.files)
-        prompt = context.request.objective + "\nImplement the admitted plan in /workspace using your normal tools. "
+        prompt = context.request.objective + "\nImplement the admitted plan in the current repository using your normal tools. "
         prompt += "Do not modify public_tests.py or TASK.md. Run public tests as appropriate.\n"
         prompt += "Plan: " + json.dumps(context.plan.steps) + "\nAllowed plan paths: " + json.dumps(context.plan.target_paths)
         if context.review:
@@ -77,7 +77,7 @@ class Reviewer:
         self.driver = driver
 
     def review(self, context):
-        prompt = (context.request.objective + "\nIndependently review this candidate in /workspace. Inspect code and run public tests. "
+        prompt = (context.request.objective + "\nIndependently review this candidate in the current repository. Inspect code and run public tests. "
                   "Do not modify code. Return ONLY JSON {\"findings\":[{\"detail\":\"...\",\"blocking\":true}]}. "
                   "An empty findings list means no issues found, NOT verification PASS.")
         response, _ = self.driver.invoke(dict(context.source.files), prompt)

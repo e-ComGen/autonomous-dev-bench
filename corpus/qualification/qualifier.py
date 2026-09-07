@@ -43,7 +43,6 @@ def qualify(root, docker, captured, policy, settings, seed, deadline):
     if public_results != fixed_public:
         raise ValueError("REFERENCE_REGRESSION")
     sets = acceptance_sets(public_results, broken_results, fixed_results)
-    # The main acceptance executes both original regression files and patched regression tests.
     full_check = {"kind": "acceptance", "paths": sorted(set(hidden["paths"]) | set(public["paths"]))}
     all_fixed = evaluator.observe(fixed, full_check)
     if not all(value == "PASS" for value in all_fixed.values()):
@@ -52,8 +51,9 @@ def qualify(root, docker, captured, policy, settings, seed, deadline):
     if "TASK.md" in captured["base_files"] or "public_tests.py" in captured["base_files"]:
         raise ValueError("BENCHMARK_PUBLIC_FILE_COLLISION")
     files["TASK.md"] = issue_task.description + "\n\nRun existing public tests: python -B public_tests.py\n"
-    files["public_tests.py"] = ("import subprocess, sys\nraise SystemExit(subprocess.call([sys.executable, '-B', '-m', "
-        "'pytest', '-q', '-o', 'addopts=', '-o', 'cache_dir=/tmp/pytest-cache', "
+    files["public_tests.py"] = ("import subprocess, sys, tempfile, os\n"
+        "raise SystemExit(subprocess.call([sys.executable, '-B', '-m', 'pytest', '-q', '-o', 'addopts=', "
+        "'-o', 'cache_dir=' + os.path.join(tempfile.gettempdir(), 'pytest-cache'), "
         + ", ".join(repr(value) for value in public["paths"]) + "]))\n")
     evaluator.deadline = None
     return issue_task, {"files": files, "checks": full_check, "expected": all_fixed,

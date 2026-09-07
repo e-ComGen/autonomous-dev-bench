@@ -1,8 +1,4 @@
-"""A narrowly routed credential relay outside both agent containers.
-
-The agent network is Docker-internal. Only this sidecar has external connectivity.
-No arbitrary URL proxy, no retry, no API key in worker environments or receipts.
-"""
+"""Fixed-endpoint credential relay, usable in a Docker sidecar or native local host."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import Request, HTTPRedirectHandler, build_opener
@@ -11,7 +7,10 @@ import json
 import os
 import sys
 
-from ledger import Ledger, AdmissionDenied
+if __package__:
+    from .ledger import Ledger, AdmissionDenied
+else:
+    from ledger import Ledger, AdmissionDenied
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -33,9 +32,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         token = self.path.strip("/").split("/")[0]
-        sequence = None
-        usage = None
-        status = "UNKNOWN"
+        sequence, usage, status = None, None, "UNKNOWN"
         try:
             if self.path != f"/{token}/chat/completions":
                 raise AdmissionDenied("UNSUPPORTED_ROUTE")
