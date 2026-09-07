@@ -17,12 +17,13 @@ def candidate(repository, pull, issues, receipts):
     merge = pull.get("mergeCommit") or {}
     connection = merge.get("parents") or {}
     parents = connection.get("nodes") or []
-    base = None
-    merge_sha = None
+    base, merge_sha, history = None, None, None
     try:
         merge_sha = str(CommitPin(merge["oid"]))
         if connection.get("totalCount") == 2 and len(parents) == 2 and parents[1]["oid"] == pull["headRefOid"]:
-            base = str(CommitPin(parents[0]["oid"]))
+            base, history = str(CommitPin(parents[0]["oid"])), "MERGE_FIRST_PARENT"
+        elif connection.get("totalCount") == 1 and len(parents) == 1 and (pull.get("commits") or {}).get("totalCount") == 1:
+            base, history = str(CommitPin(parents[0]["oid"])), "SINGLE_COMMIT_FIRST_PARENT"
         else:
             reasons.append("HISTORY_RECONSTRUCTION_REQUIRED")
     except (KeyError, ValueError, TypeError):
@@ -45,12 +46,12 @@ def candidate(repository, pull, issues, receipts):
         snapshots.append(value)
     if not snapshots:
         reasons.append("NO_LINKED_ISSUES")
-    identity = {"repository_id": repository["id"], "pull_id": pull["id"],
-                "base": base, "merge": merge_sha, "statements": snapshots}
+    identity = {"repository_id": repository["id"], "pull_id": pull["id"], "base": base,
+                "merge": merge_sha, "statements": snapshots}
     return {"schema": "autobench.candidate/v1", "candidate_id": str(Sha256Digest.of(identity)),
             "repository": repository["nameWithOwner"], "repository_id": repository["id"],
             "pull_number": pull["number"], "pre_fix_commit": base, "reference_commit": merge_sha,
-            "issues": snapshots, "provenance_refs": list(receipts),
+            "history_method": history, "issues": snapshots, "provenance_refs": list(receipts),
             "status": "QUARANTINED" if reasons else "NEEDS_QUALIFICATION",
             "qualified": False, "agent_ready": False, "visibility": "EVALUATOR_ONLY",
             "contamination_review": "NOT_PERFORMED", "reasons": sorted(set(reasons))}

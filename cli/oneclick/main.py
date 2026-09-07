@@ -1,10 +1,9 @@
-"""Operator composition root. A/B is the default; self-tests remain explicit."""
+"""Operator composition root. Real issue A/B is default; self-tests remain explicit."""
 from dataclasses import asdict
 from pathlib import Path
 import argparse
 import json
 import sys
-
 from .catalog import read_catalog
 from .checks import doctor, run_checks
 from .config import load_config
@@ -13,12 +12,13 @@ from .report import Report, atomic_write
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Random paired coding benchmark and infrastructure diagnostics")
+    result = argparse.ArgumentParser(description="Automatic GitHub issue A/B and independent verification")
     result.add_argument("command", nargs="?", default="ab",
-                        choices=("ab", "ab-preflight", "test", "doctor", "catalog", "plan", "projects", "discover", "_project"))
+        choices=("ab", "ab-preflight", "qualify", "test", "doctor", "catalog", "plan", "projects", "discover", "_project"))
     result.add_argument("--config", default="BENCHMARK.toml")
     result.add_argument("--ab-config", default="AB.toml")
     result.add_argument("--seed", type=int)
+    result.add_argument("--replay", help="Saved selection.json; reuses exact task/CAS/image bindings")
     result.add_argument("--allow-live-model", action="store_true")
     result.add_argument("--offline", action="store_true")
     result.add_argument("--allow-network", action="store_true")
@@ -30,7 +30,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def execute(root: Path, arguments, config, catalog, report) -> dict:
-    if arguments.command in {"ab", "ab-preflight"}:
+    if arguments.command in {"ab", "ab-preflight", "qualify"}:
         from suites.coding.service import run_ab
         return run_ab(root, arguments, report)
     if arguments.command == "test":
@@ -91,11 +91,11 @@ def main(root: Path) -> int:
             return 130
         return 2 if result["status"] in {"FAILED", "BLOCKED", "INCOMPLETE", "PARTIAL", "AB_INCOMPLETE"} else 0
     except KeyboardInterrupt:
-        if report is not None:
+        if report:
             report.save({"status": "CANCELLED"})
         return 130
     except (OSError, ValueError, RuntimeError) as error:
-        if report is not None:
+        if report:
             report.save({"status": "BLOCKED", "reason": str(error)[:1000]})
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 2
