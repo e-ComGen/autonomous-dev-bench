@@ -13,6 +13,7 @@ from corpus.qualification.evaluator import PytestEvaluator
 from corpus.qualification.selection import Selection
 from cli.oneclick.report import atomic_write
 from .fingerprint import implementation_fingerprint
+from .backend import validate_environment
 
 
 def save_lock(report, seed, settings, policy, selected):
@@ -47,11 +48,7 @@ def restore_lock(path, root, docker, report, settings, policy):
         value = json.loads(report.cas.get_text(ref))
         task = IssueTask(**value.pop("task"))
         image = value["image"]
-        if not image.startswith("sha256:"):
-            raise ValueError("REPLAY_REQUIRES_IMMUTABLE_IMAGE")
-        available = docker.command(("image", "inspect", image, "--format", "{{.Id}}"), required=False)
-        if not available.succeeded or available.stdout.strip() != image:
-            raise ValueError("REPLAY_IMAGE_MISSING; saved tasks were not silently rebuilt")
+        validate_environment(docker, image)
         if code_view(value["captured"]["base_files"], policy.max_code_bytes) != value["captured"]["projection"]:
             raise ValueError("REPLAY_SOURCE_MISMATCH")
         value["evaluator"] = PytestEvaluator(docker, root, docker.scratch / task.task_id,

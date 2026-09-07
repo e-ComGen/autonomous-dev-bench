@@ -70,13 +70,18 @@ def ensure_runtime(offline):
     return python
 
 
+def command_name(arguments):
+    return arguments[0] if arguments and not arguments[0].startswith("-") else "ab"
+
+
 def main():
     arguments = sys.argv[1:] or ["ab"]
     try:
         with launcher_lock(ROOT / ".bench/launcher.lock"):
             python = ensure_runtime("--offline" in arguments)
-            execution = arguments[0] in {"ab", "ab-preflight", "qualify"}
-            environment = clean_environment(ROOT, github=execution or arguments[0] == "discover")
+            command = command_name(arguments)
+            execution = command in {"ab", "ab-preflight", "qualify"}
+            environment = clean_environment(ROOT, github=execution or command == "discover")
             if execution:
                 for key in ("GH_TOKEN", "DEEPSEEK_API_KEY", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
                     if key in os.environ:

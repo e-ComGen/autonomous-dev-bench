@@ -1,4 +1,4 @@
-"""TEST ONLY: deterministic HTTP fixture; never copied into production images."""
+"""TEST ONLY: deterministic HTTP fixture; never used by production ab execution."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import json
@@ -23,8 +23,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         data = json.loads(self.rfile.read(length))
         model = data["model"]
-        Path("/results/request.json").write_text(json.dumps({"model": model, "stream": data.get("stream"),
-                                                           "message_count": len(data["messages"])}))
+        record = Path(getattr(self.server, "request_path", "/results/request.json"))
+        record.write_text(json.dumps({"model": model, "stream": data.get("stream"),
+            "message_count": len(data["messages"]), "tools": data.get("tools", [])}), encoding="utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream" if data.get("stream") else "application/json")
         self.send_header("Connection", "close")

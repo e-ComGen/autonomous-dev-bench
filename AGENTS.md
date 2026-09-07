@@ -1,39 +1,34 @@
-# Run the existing automatic GitHub issue A/B; do not write another runner
+# Run first. Do not invent another loop or replace real issue tasks.
 
-Windows interactive: `START.cmd`.
-Automation: set GITHUB_TOKEN and DEEPSEEK_API_KEY, then `START.cmd ab --allow-live-model`.
-Linux: `python tools/prepare_ab.py ab --allow-live-model`.
-No paid prompt: `START.cmd ab-preflight` (real issue qualification and real DSH boot).
-No private ADCP required: `START.cmd qualify` (GitHub issue acquisition and qualification only).
-Self-tests ONLY: `START.cmd test --offline`.
+Windows default: `START.cmd` selects NATIVE execution. No Docker, WSL, admin install or reboot.
+Python 3.12+ and Git are needed. All SDK/project Python dependencies are provisioned locally.
+Native execution needs explicit user consent: downloaded code runs with user-account permissions.
+It is NOT an OS sandbox; no enforced filesystem/network isolation or CPU/RAM ceiling.
+Do not silently grant consent or switch execution backend after a failure.
 
-Read `.bench/latest.json`, then the named summary / RESULT.md. Open referenced logs only on failure.
-Never dump .bench/, vendor/, source bundles, CAS, or benchmark-info.md into context.
-Configure AB.toml: task count, repeats, resource caps, GitHub discovery and required project quotas.
-The default project list is EMPTY: automatic public Python repository discovery.
-There is NO synthetic or function-reconstruction fallback in the A/B path.
+Automation after local-code and model-spend authorization, with keys already in environment:
+`START.cmd ab --backend native --allow-local-execution --allow-live-model`
+No paid prompts: `START.cmd ab-preflight --backend native --allow-local-execution`
+Real issue preparation only: `START.cmd qualify --backend native --allow-local-execution`
+Infrastructure tests: `START.cmd test --offline`
+Linux equivalent: `python tools/prepare_ab.py ...`
+Docker remains explicit: `--backend docker`; auto on Linux selects Docker.
 
-The launcher acquires the pinned private ADCP source with the user's read-only GitHub token.
-The actual AA/ECACC/BADC runtime is PR28 b9c933bd7727b86149da891c323a27cde5afc956.
-This is not the unpushed vNext CapabilityGateway build. Preserve this explicit identity.
-Never publish .bench/adcp or private runtime artifacts to this public repository.
+Read `.bench/latest.json`, then its summary/RESULT.md. Open referenced logs only on failure.
+Never dump .bench/, vendor/, whole issues, bundles or benchmark-info.md into agent context.
+Settings: AB.toml. Defaults select ONE real GitHub issue and BOTH existing execution paths.
+Do not replace DSH with raw model API or the actual ADCP runtime with an emulated role loop.
+B is the exact PR28 runtime, NOT the separate unpushed vNext adapter; report its identity.
+AA/ECACC/BADC remain original. Hidden evaluator feedback never enters model repair.
 
-Stock DSH and all semantic roles use the genuine full SDK profile, not raw API prompts.
-Same issue, base commit, image, test obligations and total per-arm budgets; separate workspaces.
-All native workers see the full pre-fix repository. The legacy ADCP source view holds all editable
-Python code (<=900,000 bytes); tests/config/assets stay protected in the full native workspace.
-Unsupported projects/tasks are rejected before enrollment; failures afterward stay in the score.
+Native execution reuses project wheel assets but makes a fresh project venv per invocation.
+Private source acquisition requires a GitHub read token unless ADCP was already provisioned.
+The production relay is localhost-only in native mode; real credentials are not put in child env.
+Native mode cannot prevent other same-user processes reading host files, including test assets.
+No claim of strict secret/test isolation or hostile-code benchmark authority in native mode.
+Request/output/time budgets remain active; cost is unpriced/null, never an invented zero.
 
-Only original public tests feed repairs. PR tests/reference fix remain evaluator-only.
-Missing/skipped/error required tests cannot become PASS. LLM messages never issue verification PASS.
-Dollars remain null; request/output/time caps are NOT a hard dollar spending guarantee.
-One task is a smoke comparison, not statistical proof of improvement.
-
-Replay EXACT saved selection: `START.cmd ab --replay .bench/runs/<id>/selection.json --allow-live-model`.
-Keep CAS objects and the exact project images. --seed alone is not replay of changing GitHub search.
-
-Prerequisites: Python 3.12+, Git, running Docker with Linux containers, GitHub and DeepSeek access.
-No paid model is invoked by infrastructure tests or qualification. User must authorize paid runs.
-Small modules <=220 lines; reuse existing ProcessRunner, Git/worktree owners and CAS.
-Map: corpus/discovery/automatic.py; corpus/qualification/; suites/coding/service.py,
-issue_preparation.py, issue_campaign.py, native.py, cycle.py and provider/.
+Source: suites/coding/backend.py selects a mechanism; backends/ contains only native execution.
+Existing service.py/issue_campaign.py own A/B; existing corpus/qualification owns task validity.
+Existing ProcessRunner/Git/worktree/CAS owners must be reused. Keep new modules <=220 lines.
+Do not publish private ADCP code to this public repository or CI logs/artifacts.

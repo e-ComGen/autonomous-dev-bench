@@ -1,4 +1,4 @@
-"""Bounded Python/pytest build recipes derived only from the pre-fix repository."""
+"""Bounded Python/pytest recipes derived only from the pre-fix repository."""
 from pathlib import PurePosixPath
 import configparser
 import json
@@ -29,6 +29,8 @@ def infer_recipe(files):
 
 
 def build_project_image(docker, task, policy, deadline):
+    if getattr(docker, "backend", "docker") == "native":
+        return docker.build_project_environment(task, policy, deadline)
     from .files import materialize
     from benchmark_core.identity import Sha256Digest
     import time
@@ -42,8 +44,6 @@ def build_project_image(docker, task, policy, deadline):
         if label != identity:
             raise ValueError("PROJECT_IMAGE_INPUT_CONFLICT")
         return image, recipe
-    # BuildKit resolves a bare sha256:ID as a registry tag. Bind a local named alias,
-    # verify its ID, and record the immutable original in the task fingerprint.
     base_tag = "autobenchmark-base:" + base_image.removeprefix("sha256:")[:24]
     docker.command(("image", "tag", base_image, base_tag))
     resolved = docker.command(("image", "inspect", base_tag, "--format", "{{.Id}}"))

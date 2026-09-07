@@ -1,5 +1,7 @@
-"""One-click prerequisite acquisition: existing private ADCP, then automatic public issue A/B."""
+"""Acquire prerequisites for the selected execution backend, then run the same issue A/B."""
+import argparse
 import base64
+from dataclasses import replace
 import getpass
 import os
 from pathlib import Path
@@ -8,8 +10,20 @@ import subprocess
 import sys
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
+from suites.coding.settings import load_settings
+from suites.coding.backend import backend_name
 ADCP_REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
 ADCP_COMMIT = "b9c933bd7727b86149da891c323a27cde5afc956"
+
+
+def selected_backend(arguments):
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--backend", choices=("auto", "native", "docker"))
+    parser.add_argument("--ab-config", default=str(ROOT / "AB.toml"))
+    known, _ = parser.parse_known_args(arguments)
+    settings = load_settings(known.ab_config)
+    return backend_name(replace(settings, execution_backend=known.backend or settings.execution_backend))
 
 
 def clean_acquisition_environment():
@@ -72,14 +86,16 @@ def main():
                 raise RuntimeError("Python 3.12 or newer is required")
             if "--offline" in arguments:
                 raise RuntimeError("Issue A/B is not an offline self-test")
-            if not shutil.which("docker"):
-                raise RuntimeError("Install and start Docker with Linux containers")
+            selected = selected_backend(arguments)
+            print("Selected backend: " + selected, flush=True)
+            if selected == "docker" and not shutil.which("docker"):
+                raise RuntimeError("Docker was explicitly selected but is unavailable; use --backend native --allow-local-execution")
             if "--replay" not in arguments or not (ROOT / ".bench/adcp/SOURCE.json").is_file():
                 os.environ["GITHUB_TOKEN"] = read_token()
             if command != "qualify":
                 prepare_runtime()
         return subprocess.call([sys.executable, "-I", str(ROOT / "tools/launch.py"), *arguments], cwd=ROOT)
-    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 2
     finally:
