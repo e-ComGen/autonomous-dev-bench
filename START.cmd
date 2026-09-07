@@ -4,6 +4,11 @@ pushd "%~dp0" || exit /b 2
 set "BENCH_EXIT=2"
 where py >nul 2>nul
 if not errorlevel 1 (
+  py -3.12 -I -c "import sys" >nul 2>nul
+  if not errorlevel 1 (
+    py -3.12 -I tools\prepare_ab.py %*
+    goto finished
+  )
   py -3 -I tools\prepare_ab.py %*
   goto finished
 )

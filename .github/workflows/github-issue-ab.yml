@@ -23,11 +23,28 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e '.[dev]'
       - run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Prepare bundled self-test sources and offline dependency wheels
+        run: |
+          python tools/bench.py projects --allow-network
+          python -m pip download --only-binary=:all: --dest vendor/wheels -r tools/requirements-launcher.txt
+      - name: Exercise packaged launcher without Git metadata in a path with spaces
+        run: |
+          python tools/package_release.py
+          python tools/verify_release.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: issue-host-${{ matrix.os }}
-          path: artifacts/
+          path: |
+            artifacts/tests.xml
+            artifacts/release-evidence/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'ubuntu-latest'
+        with:
+          name: issue-ready-stage
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
           retention-days: 7
   native:
     runs-on: ubuntu-latest
@@ -41,6 +58,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e '.[dev]'
       - run: python tools/verify_native_boot.py
+      - run: python tools/verify_native_transport.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,7 +76,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e '.[dev]'
-      - name: Real discovery, clone, build, repeated bug/regression qualification and replay
+      - name: Live discovery, clone, build, repeated bug/regression qualification and replay
         run: python tools/verify_issue_pipeline.py
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -68,3 +86,37 @@ jobs:
           name: issue-qualification
           path: artifacts/
           retention-days: 7
+  release:
+    needs: [unit, native, qualification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: issue-ready-stage
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: issue-host-ubuntu-latest
+          path: evidence/ubuntu-latest
+      - uses: actions/download-artifact@v4
+        with:
+          name: issue-host-windows-latest
+          path: evidence/windows-latest
+      - uses: actions/download-artifact@v4
+        with:
+          name: issue-native
+          path: evidence/native
+      - uses: actions/download-artifact@v4
+        with:
+          name: issue-qualification
+          path: evidence/qualification
+      - name: Attach exact observed validation, never invented paid model results
+        run: python release/tools/attach_validation.py release evidence
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autobenchmark-github-issue-ab
+          path: release/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
