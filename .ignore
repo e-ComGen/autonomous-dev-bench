@@ -6,3 +6,6 @@ dist/
 benchmark-info.md
 reports/
 reference_projects/
+# Operator credentials are not coding context.
+.env
+.env.*
