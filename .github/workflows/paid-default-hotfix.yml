@@ -1,0 +1,58 @@
+name: Paid AB default launcher
+on:
+  push:
+    branches: [fix/paid-ab-default]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Full suite and actual no-input launcher with absent or negative legacy settings
+        run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Retrieve exact previous release for dependency-preserving delivery
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/e-ComGen/autonomous-dev-bench/actions/artifacts/10031359627/zip > base-release.zip
+      - name: Assemble overlay and full release without copying user credentials
+        run: python tools/package_paid_default.py base-release.zip
+      - name: Test the complete unpacked release in a path with spaces
+        run: python tools/verify_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paid-default-evidence-${{ matrix.os }}
+          path: |
+            artifacts/tests.xml
+            artifacts/release-evidence/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'windows-latest'
+        with:
+          name: paid-default-fix
+          path: artifacts/paid-default-fix/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'windows-latest'
+        with:
+          name: autobench-paid-default
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

@@ -4,9 +4,7 @@ import os
 import subprocess
 import sys
 import pytest
-from tools.launcher_credentials import (
-    KEYS, parse_credentials, read_credentials, create_template, host_credentials, paid_authorized,
-)
+from tools.launcher_credentials import KEYS, parse_credentials, read_credentials, create_template, host_credentials
 from tools.launch import host_environment
 from tools.launcher_env import clean_environment
 from tools.start_ready import configured_arguments, ConfigurationRequired, main
@@ -14,25 +12,37 @@ from tools.start_ready import configured_arguments, ConfigurationRequired, main
 
 @pytest.fixture(autouse=True)
 def without_real_keys(monkeypatch):
-    for key in KEYS:
+    for key in (*KEYS, "AUTOBENCH_ALLOW_PAID"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected interactive question"))
     monkeypatch.setattr("getpass.getpass", lambda *args: pytest.fail("Unexpected credential question"))
 
 
 def configured(root):
-    (root / ".env").write_text("GITHUB_TOKEN=unit-github\nDEEPSEEK_API_KEY=unit-deepseek\nAUTOBENCH_ALLOW_PAID=YES\n")
+    (root / ".env").write_text("GITHUB_TOKEN=unit-github\nDEEPSEEK_API_KEY=unit-deepseek\n")
     return read_credentials(root)
 
 
-@pytest.mark.parametrize("value", ["YES", "yes", "Yes", "1", "on", "true", " YES "])
-def test_persisted_paid_optin_is_explicit_case_insensitive(value):
-    assert paid_authorized(value)
+@pytest.mark.parametrize("value", [None, "", "NO", "false", "0", "YES", "yes", "true", "on", "anything"])
+def test_obsolete_paid_switch_in_file_and_environment_cannot_block_ab(tmp_path, value):
+    configured(tmp_path)
+    environment = {}
+    if value is not None:
+        with (tmp_path / ".env").open("a") as stream:
+            stream.write("AUTOBENCH_ALLOW_PAID=" + value + "\n")
+        environment["AUTOBENCH_ALLOW_PAID"] = value
+    values = read_credentials(tmp_path, environment)
+    assert "AUTOBENCH_ALLOW_PAID" not in values
+    assert configured_arguments(tmp_path, [], values) == ["ab", "--allow-live-model", "--allow-local-execution"]
 
 
-@pytest.mark.parametrize("value", ["", "NO", "false", "0", "maybe", "yesterday"])
-def test_missing_or_negative_value_does_not_authorize_paid_requests(value):
-    assert not paid_authorized(value)
+@pytest.mark.parametrize("line", ["AUTOBENCH_ALLOW_PAID=NO\nAUTOBENCH_ALLOW_PAID=NO", 'AUTOBENCH_ALLOW_PAID="unclosed',
+                                 "AUTOBENCH_ALLOW_PAID", "AUTOBENCH_ALLOW_PAID=with spaces"])
+def test_obsolete_lines_are_ignored_as_unrelated_settings(tmp_path, line):
+    configured(tmp_path)
+    with (tmp_path / ".env").open("a") as stream:
+        stream.write(line + "\n")
+    assert "--allow-live-model" in configured_arguments(tmp_path, [], read_credentials(tmp_path))
 
 
 def test_parser_preserves_literal_values_and_accepts_bom_quotes():
@@ -62,6 +72,10 @@ def test_template_is_never_written_over_real_keys(tmp_path):
     assert read_credentials(tmp_path) == values
 
 
+def test_new_template_has_no_paid_switch(tmp_path):
+    assert "AUTOBENCH_ALLOW_PAID" not in create_template(tmp_path).read_text()
+
+
 def test_authorized_launch_adds_real_flags_once_without_input(tmp_path):
     values = configured(tmp_path)
     arguments = configured_arguments(tmp_path, [], values)
@@ -70,16 +84,26 @@ def test_authorized_launch_adds_real_flags_once_without_input(tmp_path):
     assert all("unit-" not in argument for argument in arguments)
 
 
-def test_local_execution_does_not_implicitly_authorize_payment(tmp_path):
+def test_existing_local_flag_does_not_duplicate_flags(tmp_path):
     values = configured(tmp_path)
     values["AUTOBENCH_ALLOW_PAID"] = "NO"
-    with pytest.raises(ConfigurationRequired, match="AUTOBENCH_ALLOW_PAID"):
-        configured_arguments(tmp_path, ["ab", "--allow-local-execution"], values)
+    arguments = configured_arguments(tmp_path, ["ab", "--allow-local-execution"], values)
+    assert arguments == ["ab", "--allow-local-execution", "--allow-live-model"]
 
 
-def test_qualification_requires_no_model_key_or_payment(tmp_path):
-    arguments = configured_arguments(tmp_path, ["qualify"], {"GITHUB_TOKEN": "unit-gh"})
-    assert arguments == ["qualify", "--allow-local-execution"]
+@pytest.mark.parametrize("command", ["test", "doctor", "catalog", "plan", "projects", "qualify", "discover", "ab-preflight"])
+def test_diagnostics_are_not_authorized_to_call_a_paid_model(tmp_path, command):
+    arguments = configured_arguments(tmp_path, [command], {"GITHUB_TOKEN": "unit-gh"})
+    assert "--allow-live-model" not in arguments
+
+
+@pytest.mark.parametrize("missing", ["GITHUB_TOKEN", "DEEPSEEK_API_KEY"])
+def test_paid_default_still_requires_real_credential_fields(tmp_path, missing):
+    values = configured(tmp_path)
+    values[missing] = ""
+    with pytest.raises(ConfigurationRequired, match=missing) as exception:
+        configured_arguments(tmp_path, [], values)
+    assert "AUTOBENCH_ALLOW_PAID" not in str(exception.value)
 
 
 def test_missing_token_fails_before_bootstrap_and_never_prompts(tmp_path, monkeypatch, capsys):
@@ -94,7 +118,7 @@ def test_replay_with_staged_adcp_needs_no_github_key(tmp_path):
     path = tmp_path / ".bench/adcp/SOURCE.json"
     path.parent.mkdir(parents=True)
     path.write_text("{}")
-    values = {"GITHUB_TOKEN": "", "DEEPSEEK_API_KEY": "unit-key", "AUTOBENCH_ALLOW_PAID": "YES"}
+    values = {"GITHUB_TOKEN": "", "DEEPSEEK_API_KEY": "unit-key"}
     assert "--allow-live-model" in configured_arguments(tmp_path, ["ab", "--replay=x.json"], values)
 
 
