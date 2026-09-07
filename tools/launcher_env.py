@@ -1,6 +1,7 @@
 """An allowlist for benchmark subprocesses, not an OS sandbox."""
 from pathlib import Path
 import os
+import tempfile
 
 _SYSTEM = {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
            "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "LANG", "LC_ALL"}
@@ -9,6 +10,13 @@ _SYSTEM = {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
 def clean_environment(root: Path, *, github: bool = False) -> dict[str, str]:
     environment = {key: value for key, value in os.environ.items()
                    if key.upper() in _SYSTEM}
+    # Preserve the operator's original temp parent before redirecting ordinary
+    # subprocess TMP. Nested launcher calls must not add the checkout prefix.
+    # Tests allocate and delete only a new private child of this directory.
+    test_parent = Path(os.environ.get("AUTOBENCH_TEST_TMPDIR") or tempfile.gettempdir()).resolve()
+    if not test_parent.is_dir():
+        raise ValueError("Test scratch parent does not exist")
+    environment["AUTOBENCH_TEST_TMPDIR"] = str(test_parent)
     state = root / ".bench"
     if state.is_symlink():
         raise ValueError(".bench must not be a symlink")

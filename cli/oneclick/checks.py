@@ -1,5 +1,6 @@
 """Run the existing suite and bundled negative control using ProcessRunner."""
 from pathlib import Path
+import os
 import shutil
 import sys
 import tempfile
@@ -24,11 +25,11 @@ def run_checks(root: Path, config, report) -> dict:
         return {"status": "BLOCKED", "prerequisites": prerequisites,
                 "reason": "GIT_OR_BUNDLED_PROJECT_MISSING"}
     junit = report.directory / "repository-tests.xml"
-    # Keep pytest's owned scratch close to the checkout root. Nesting the
-    # default pytest hierarchy below managed TMP exceeds Git for Windows'
-    # separate GIT_DIR bound, even when core.longpaths is enabled.
-    # Only this newly allocated directory can be cleared by --basetemp.
-    with tempfile.TemporaryDirectory(prefix="p", dir=root / ".bench") as scratch:
+    # Git for Windows has a GIT_DIR bound independent of core.longpaths.
+    # Reports remain in .bench; pytest gets one owned short-lived directory
+    # directly below the original OS temp parent, not below the extracted ZIP.
+    parent = Path(os.environ.get("AUTOBENCH_TEST_TMPDIR") or tempfile.gettempdir())
+    with tempfile.TemporaryDirectory(prefix="ab-", dir=parent) as scratch:
         command = CommandSpec((sys.executable, "-B", "-m", "pytest", "-q", "--color=no",
                                "--tb=short", "-p", "no:cacheprovider", "--basetemp=" + scratch,
                                "--junitxml=" + str(junit), "tests"),
