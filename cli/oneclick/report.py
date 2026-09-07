@@ -32,8 +32,8 @@ class Report:
         self.cas = FileSystemCAS(root / ".bench/cas")
 
     def save(self, result: dict) -> Path:
-        result = {"schema": "autobench.operator_report/v1", "command": self.command,
-                  "authoritative": False, "live_model_called": False, **result}
+        result = {**result, "schema": "autobench.operator_report/v1", "command": self.command,
+                  "authoritative": False, "live_model_called": False}
         text = canonical_json(result)
         if len(text.encode("utf-8")) > 131072:
             raise ValueError("Operator report exceeds 128 KiB; put details in CAS")

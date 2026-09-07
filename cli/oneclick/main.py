@@ -69,20 +69,25 @@ def worker(root: Path, arguments, config, catalog) -> int:
 
 def main(root: Path) -> int:
     arguments = parser().parse_args()
-    if arguments.offline and arguments.allow_network:
-        parser().error("--offline and --allow-network are mutually exclusive")
+    report = None
     try:
+        if arguments.command != "_project":
+            report = Report(root, arguments.command)
+        if arguments.offline and arguments.allow_network:
+            raise ValueError("--offline and --allow-network are mutually exclusive")
         config = load_config(Path(arguments.config).resolve())
         catalog = read_catalog(root)
         if arguments.command == "_project":
             return worker(root, arguments, config, catalog)
-        report = Report(root, arguments.command)
         result = execute(root, arguments, config, catalog, report)
         report.save(result)
         return 2 if result["status"] in {"FAILED", "BLOCKED", "INCOMPLETE", "PARTIAL"} else 0
     except KeyboardInterrupt:
-        print("CANCELLED", file=sys.stderr)
+        if report is not None:
+            report.save({"status": "CANCELLED"})
         return 130
     except (OSError, ValueError, RuntimeError) as error:
+        if report is not None:
+            report.save({"status": "BLOCKED", "reason": str(error)[:1000]})
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 2

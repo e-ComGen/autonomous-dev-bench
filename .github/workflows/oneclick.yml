@@ -11,7 +11,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,11 +19,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Existing and new regression tests
+        run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Verify pinned real source and export offline seeds
+        run: python tools/bench.py projects --allow-network
+      - name: Download pinned universal test wheels
+        run: python -m pip download --only-binary=:all: --dest vendor/wheels -r tools/requirements-launcher.txt
+      - name: Assemble tracked source and offline payloads
+        run: python tools/package_release.py
+      - name: Exercise actual launcher without git metadata in a path with spaces
+        run: python tools/verify_release.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: oneclick-test-${{ matrix.os }}
-          path: artifacts/
+          name: oneclick-evidence-${{ matrix.os }}
+          path: |
+            artifacts/tests.xml
+            artifacts/release-evidence/
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneclick-diagnostics-${{ matrix.os }}
+          path: |
+            .bench/latest.json
+            .bench/runs/**/summary.json
+            .bench/runs/**/*.log
+            .bench/runs/**/*.xml
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'ubuntu-latest'
+        with:
+          name: autobenchmark-oneclick
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error

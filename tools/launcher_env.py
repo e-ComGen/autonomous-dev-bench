@@ -10,6 +10,8 @@ def clean_environment(root: Path, *, github: bool = False) -> dict[str, str]:
     environment = {key: value for key, value in os.environ.items()
                    if key.upper() in _SYSTEM}
     state = root / ".bench"
+    if state.is_symlink():
+        raise ValueError(".bench must not be a symlink")
     for name in ("home", "tmp"):
         directory = state / name
         if directory.is_symlink():
@@ -23,7 +25,10 @@ def clean_environment(root: Path, *, github: bool = False) -> dict[str, str]:
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
         "PYTHONPATH": os.pathsep.join((str(root), str(root / "packages/benchmark_core"))),
         "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_TERMINAL_PROMPT": "0", "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "core.longpaths",
+        "GIT_CONFIG_VALUE_0": "true", "GIT_CONFIG_KEY_1": "core.autocrlf",
+        "GIT_CONFIG_VALUE_1": "false", "GIT_TERMINAL_PROMPT": "0",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     })
     if github and os.environ.get("GITHUB_TOKEN"):
         environment["GITHUB_TOKEN"] = os.environ["GITHUB_TOKEN"]
