@@ -1,0 +1,56 @@
+name: Launcher credentials and no-prompt hotfix
+on:
+  push:
+    branches: [fix/launcher-credentials-no-prompts]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Host suite including real launcher process and credential propagation
+        run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Retrieve exact previously validated native release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/e-ComGen/autonomous-dev-bench/actions/artifacts/10029351332/zip > native-base.zip
+      - name: Assemble hotfix without credential files
+        run: python tools/package_launch_fix.py native-base.zip
+      - name: Verify fresh packaged test/project/plan execution
+        run: python tools/verify_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: launcher-evidence-${{ matrix.os }}
+          path: |
+            artifacts/tests.xml
+            artifacts/release-evidence/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'windows-latest'
+        with:
+          name: launcher-fix
+          path: artifacts/launcher-fix/
+          include-hidden-files: true
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'windows-latest'
+        with:
+          name: autobench-no-prompts
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
+          retention-days: 7

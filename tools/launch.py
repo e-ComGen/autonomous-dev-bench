@@ -1,4 +1,4 @@
-"""Prepare a private test venv and dispatch the real GitHub issue benchmark."""
+"""Private test venv and host-only credentials; no token loss across launcher processes."""
 from pathlib import Path
 import hashlib
 import json
@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools.launcher_env import clean_environment
 from tools.launcher_lock import launcher_lock
+from tools.launcher_credentials import read_credentials
 
 
 def invoke(argv, log, environment, timeout):
@@ -74,20 +75,33 @@ def command_name(arguments):
     return arguments[0] if arguments and not arguments[0].startswith("-") else "ab"
 
 
+def host_environment(root, command):
+    environment = clean_environment(root)
+    execution = command in {"ab", "ab-preflight", "qualify"}
+    if execution or command == "discover":
+        credentials = read_credentials(root)
+        for key in ("GITHUB_TOKEN", "GH_TOKEN"):
+            if credentials[key]:
+                environment[key] = credentials[key]
+        if command == "ab" and credentials["DEEPSEEK_API_KEY"]:
+            environment["DEEPSEEK_API_KEY"] = credentials["DEEPSEEK_API_KEY"]
+    if execution:
+        for key in ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
+            if key in os.environ:
+                environment[key] = os.environ[key]
+        environment["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))
+    return environment
+
+
 def main():
     arguments = sys.argv[1:] or ["ab"]
     try:
         with launcher_lock(ROOT / ".bench/launcher.lock"):
-            python = ensure_runtime("--offline" in arguments)
             command = command_name(arguments)
-            execution = command in {"ab", "ab-preflight", "qualify"}
-            environment = clean_environment(ROOT, github=execution or command == "discover")
-            if execution:
-                for key in ("GH_TOKEN", "DEEPSEEK_API_KEY", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
-                    if key in os.environ:
-                        environment[key] = os.environ[key]
-                environment["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))
-            return subprocess.call([str(python), "-B", str(ROOT / "tools/bench.py"), *arguments], cwd=ROOT, env=environment, shell=False)
+            environment = host_environment(ROOT, command)
+            python = ensure_runtime("--offline" in arguments)
+            return subprocess.call([str(python), "-B", str(ROOT / "tools/bench.py"), *arguments],
+                                   cwd=ROOT, env=environment, shell=False)
     except KeyboardInterrupt:
         return 130
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:

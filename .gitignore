@@ -20,3 +20,7 @@ hidden_*/
 .bench/
 vendor/
 artifacts/
+# Operator credentials must never be committed.
+.env
+.env.*
+!.env.example
