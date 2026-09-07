@@ -4,15 +4,15 @@ pushd "%~dp0" || exit /b 2
 set "BENCH_EXIT=2"
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3 -I tools\launch.py %*
+  py -3 -I tools\prepare_ab.py %*
   goto finished
 )
 where python >nul 2>nul
 if errorlevel 1 (
-  echo BLOCKED: install Python 3.11 or newer, then run START.cmd again.
+  echo BLOCKED: install Python 3.12 or newer, then run START.cmd again.
   goto cleanup
 )
-python -I tools\launch.py %*
+python -I tools\prepare_ab.py %*
 :finished
 set "BENCH_EXIT=%ERRORLEVEL%"
 :cleanup

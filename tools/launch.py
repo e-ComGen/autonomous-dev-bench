@@ -1,18 +1,17 @@
-"""Prepare one private venv; default dispatch is the real random A/B command."""
+"""Prepare a private test venv and dispatch the real GitHub issue benchmark."""
 from pathlib import Path
 import hashlib
 import json
 import os
 import subprocess
 import sys
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools.launcher_env import clean_environment
 from tools.launcher_lock import launcher_lock
 
 
-def invoke(argv: list[str], log: Path, environment: dict[str, str], timeout: int) -> None:
+def invoke(argv, log, environment, timeout):
     with log.open("ab") as stream:
         result = subprocess.run(argv, cwd=ROOT, env=environment, stdin=subprocess.DEVNULL,
                                 stdout=stream, stderr=subprocess.STDOUT, timeout=timeout, shell=False)
@@ -20,15 +19,14 @@ def invoke(argv: list[str], log: Path, environment: dict[str, str], timeout: int
         raise RuntimeError(f"Bootstrap exited {result.returncode}; see {log}")
 
 
-def verify_wheels(wheelhouse: Path) -> bool:
+def verify_wheels(wheelhouse):
     manifest = wheelhouse / "SHA256SUMS.json"
     if not manifest.is_file():
         return False
     entries = json.loads(manifest.read_text(encoding="utf-8"))
     if not entries or not isinstance(entries, dict):
         raise ValueError("Invalid wheel manifest")
-    actual = {path.name for path in wheelhouse.glob("*.whl")}
-    if actual != set(entries):
+    if {path.name for path in wheelhouse.glob("*.whl")} != set(entries):
         raise ValueError("Wheel manifest does not match wheelhouse")
     for name, expected in entries.items():
         if Path(name).name != name or not name.endswith(".whl"):
@@ -38,7 +36,7 @@ def verify_wheels(wheelhouse: Path) -> bool:
     return True
 
 
-def ensure_runtime(offline: bool) -> Path:
+def ensure_runtime(offline):
     if sys.version_info < (3, 11):
         raise RuntimeError("Python 3.11+ is required; no global packages were changed")
     state = ROOT / ".bench"
@@ -72,21 +70,20 @@ def ensure_runtime(offline: bool) -> Path:
     return python
 
 
-def main() -> int:
+def main():
     arguments = sys.argv[1:] or ["ab"]
     try:
         with launcher_lock(ROOT / ".bench/launcher.lock"):
             python = ensure_runtime("--offline" in arguments)
-            environment = clean_environment(ROOT, github=arguments[0] == "discover")
-            if arguments[0] in {"ab", "ab-preflight"}:
-                for key in ("DEEPSEEK_API_KEY", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
+            execution = arguments[0] in {"ab", "ab-preflight", "qualify"}
+            environment = clean_environment(ROOT, github=execution or arguments[0] == "discover")
+            if execution:
+                for key in ("GH_TOKEN", "DEEPSEEK_API_KEY", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"):
                     if key in os.environ:
                         environment[key] = os.environ[key]
                 environment["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))
-            return subprocess.call([str(python), "-B", str(ROOT / "tools/bench.py"), *arguments],
-                                   cwd=ROOT, env=environment, shell=False)
+            return subprocess.call([str(python), "-B", str(ROOT / "tools/bench.py"), *arguments], cwd=ROOT, env=environment, shell=False)
     except KeyboardInterrupt:
-        print("CANCELLED: inspect the retained report; no success is inferred", file=sys.stderr)
         return 130
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)

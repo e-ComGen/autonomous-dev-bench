@@ -1,9 +1,7 @@
-"""Execute the two arms once; exceptions remain enrolled outcomes, never resampling triggers."""
+"""One enrolled episode per arm. Failures never trigger task resampling."""
 import difflib
-import json
 import random
 import time
-from pathlib import Path
 from benchmark_core.identity import canonical_json, Sha256Digest
 from .native import NativeDriver, stock_arm
 from .provider.ledger import totals
@@ -22,9 +20,11 @@ def run_episode(root, recipe, qualified, repetition, arm, docker, evaluator, tok
     directory = scratch / (recipe.task_id + f"-{repetition}-{arm}")
     directory.mkdir()
     started = time.monotonic()
-    driver = NativeDriver(docker, directory, settings, token, started + settings.arm_seconds)
+    driver = NativeDriver(docker, directory, settings, token, started + settings.arm_seconds,
+                          workspace_adapter=qualified.get("workspace_adapter"))
     candidate = before
     metadata = {}
+    evaluator.deadline = driver.deadline
     try:
         if arm == "stock":
             candidate, metadata = stock_arm(driver, before, recipe.description)
@@ -33,10 +33,13 @@ def run_episode(root, recipe, qualified, repetition, arm, docker, evaluator, tok
                 qualified["public_checks"], qualified["public_expected"], directory, settings)
     except (OSError, ValueError, RuntimeError) as error:
         metadata = {"status": "EXECUTION_ERROR", "reason": str(error)[:1500], "invocations": driver.invocations}
+        if arm == "stock" and driver.last_candidate is not None:
+            candidate = driver.last_candidate
+    finally:
+        evaluator.deadline = None
     wall = time.monotonic() - started
     scored = evaluator.score(candidate, qualified["checks"], qualified["expected"])
-    patch = patch_text(before, candidate)
-    patch_ref = report.cas.put_text(patch)
+    patch_ref = report.cas.put_text(patch_text(before, candidate))
     detail_ref = report.cas.put_text(canonical_json({"execution": metadata, "evaluation": scored}))
     delivered = metadata.get("status") in {"RETURNED", "CANDIDATE_READY"}
     passed = scored["status"] == "PASS"
@@ -44,7 +47,7 @@ def run_episode(root, recipe, qualified, repetition, arm, docker, evaluator, tok
             "input_digest": str(Sha256Digest.of(before)), "candidate_digest": str(Sha256Digest.of(candidate)),
             "execution": metadata.get("status"), "external_verdict": scored["status"], "delivered": delivered,
             "external_pass": passed, "solved": passed and delivered, "wall_seconds": round(wall, 3),
-            "false_accept": delivered and not passed, "false_reject": passed and not delivered,
+            "false_accept": delivered and scored["status"] == "FAIL", "false_reject": passed and not delivered,
             "patch_ref": patch_ref, "details_ref": detail_ref}
 
 
