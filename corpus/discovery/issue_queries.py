@@ -16,7 +16,7 @@ query($query: String!, $cursor: String) {
     pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest {
       id number createdAt mergedAt merged headRefOid changedFiles
-      commits { totalCount }
+      commits(first: 1) { totalCount }
       mergeCommit { oid parents(first: 3) { totalCount nodes { oid } } }
       closingIssuesReferences(first: 6, excludeUserLinked: true) {
         pageInfo { hasNextPage }

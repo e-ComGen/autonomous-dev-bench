@@ -34,12 +34,21 @@ def test_complete_repository_and_hidden_test_separation(tmp_path):
     workspace = RepositoryWorkspace(files, 1024)
     view["TASK.md"] = "Issue text"
     workspace.materialize(view, tmp_path)
-    assert (tmp_path / "tests/test_a.py").read_text() == "hidden = False\n"
-    (tmp_path / "lib.py").write_text("value = 2\n")
+    assert (tmp_path / "tests/test_a.py").read_bytes() == b"hidden = False\n"
+    (tmp_path / "lib.py").write_bytes(b"value = 2\n")
     assert workspace.read_candidate(view, tmp_path)["lib.py"] == "value = 2\n"
-    (tmp_path / "tests/test_a.py").write_text("assert True\n")
+    (tmp_path / "tests/test_a.py").write_bytes(b"assert True\n")
     with pytest.raises(ValueError, match="PROTECTED"):
         workspace.read_candidate(view, tmp_path)
+
+
+def test_candidate_does_not_silently_normalize_crlf(tmp_path):
+    files = {"lib.py": payload("value = 1\n")}
+    view = code_view(files, 1024)
+    workspace = RepositoryWorkspace(files, 1024)
+    workspace.materialize(view, tmp_path)
+    (tmp_path / "lib.py").write_bytes(b"value = 2\r\n")
+    assert workspace.read_candidate(view, tmp_path)["lib.py"] == "value = 2\r\n"
 
 
 def test_junit_rejects_empty_duplicates_and_entities():

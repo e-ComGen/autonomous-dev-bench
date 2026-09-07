@@ -1,6 +1,5 @@
-"""Seeded automatic public repository/issue intake over the existing GitHubReader."""
+"""Seeded public repository/issue intake over the existing bounded GitHubReader."""
 import random
-from .github import GitHubReader, IntakeError
 from .candidates import candidate, quarantine_overlaps
 from .issue_queries import REPOSITORIES, PULLS, REPO
 from corpus.qualification.policy import REPOSITORY
@@ -22,7 +21,6 @@ class AutomaticIntake:
                 if isinstance(data.get("repository"), dict):
                     pool.append((data["repository"], receipt))
         else:
-            # This is a seeded sample of a bounded search universe, not uniform sampling of all GitHub.
             ordering = self.random.choice(("updated-desc", "stars-desc", "stars-asc"))
             query = (f"language:Python is:public fork:false archived:false stars:{policy.min_stars}..{policy.max_stars} "
                      f"pushed:>={policy.since} sort:{ordering}")
@@ -47,7 +45,7 @@ class AutomaticIntake:
             if index >= self.policy.max_repositories:
                 return
             name = repository["nameWithOwner"]
-            query = f"repo:{name} is:pr is:merged merged:>={self.policy.since} -author:app/dependabot sort:updated-desc"
+            query = f"repo:{name} is:pr is:merged linked:issue merged:>={self.policy.since} sort:updated-desc"
             pool = list(self.reader.search(PULLS, query, self.policy.pulls_per_repository))
             self.random.shuffle(pool)
             candidates = []
