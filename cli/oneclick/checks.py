@@ -2,6 +2,7 @@
 from pathlib import Path
 import shutil
 import sys
+import tempfile
 
 from benchmark_core.execution import CommandSpec, ProcessRunner
 from .catalog import read_catalog
@@ -23,10 +24,16 @@ def run_checks(root: Path, config, report) -> dict:
         return {"status": "BLOCKED", "prerequisites": prerequisites,
                 "reason": "GIT_OR_BUNDLED_PROJECT_MISSING"}
     junit = report.directory / "repository-tests.xml"
-    command = CommandSpec((sys.executable, "-B", "-m", "pytest", "-q", "--color=no",
-                           "--tb=short", "-p", "no:cacheprovider", "--junitxml=" + str(junit), "tests"),
-                          config.budgets.test_seconds, str(root))
-    result = ProcessRunner().run(command)
+    # Keep pytest's owned scratch close to the checkout root. Nesting the
+    # default pytest hierarchy below managed TMP exceeds Git for Windows'
+    # separate GIT_DIR bound, even when core.longpaths is enabled.
+    # Only this newly allocated directory can be cleared by --basetemp.
+    with tempfile.TemporaryDirectory(prefix="p", dir=root / ".bench") as scratch:
+        command = CommandSpec((sys.executable, "-B", "-m", "pytest", "-q", "--color=no",
+                               "--tb=short", "-p", "no:cacheprovider", "--basetemp=" + scratch,
+                               "--junitxml=" + str(junit), "tests"),
+                              config.budgets.test_seconds, str(root))
+        result = ProcessRunner().run(command)
     log = log_result(report, "repository-tests", result)
     if result.timed_out or not junit.is_file():
         return {"status": "FAILED", "suite": log, "reason": "TEST_TIMEOUT_OR_NO_JUNIT"}
