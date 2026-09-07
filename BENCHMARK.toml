@@ -1,0 +1,31 @@
+schema = "autobench.campaign/v1"
+projects = ["pluggy.pinned_001", "requests.pinned_001", "httpx.pinned_001"]
+repetitions = 2
+tasks_per_project = 5
+seed = 41
+arms = ["default_dsh", "development_cycle"]
+
+# Quotas use the existing declared project classifications, not inferred LOC.
+[quotas]
+small = 1
+medium = 2
+large = 0
+
+# Process limits are enforced; API spend is planning-only until live integration.
+[budgets]
+test_seconds = 900
+project_seconds = 1200
+build_seconds = 900
+baseline_seconds = 600
+max_api_requests = 100
+api_seconds = 120
+max_response_bytes = 2097152
+planned_usd_per_episode = 1.0
+
+[discovery]
+language = "Python"
+since = "2026-06-01"
+max_repositories = 10
+max_prs_per_repository = 10
+min_stars = 100
+licenses = ["MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"]

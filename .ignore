@@ -1,0 +1,8 @@
+# Keep default source searches small. Explicit file reads remain available.
+.bench/
+vendor/
+artifacts/
+dist/
+benchmark-info.md
+reports/
+reference_projects/

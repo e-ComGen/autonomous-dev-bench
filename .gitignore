@@ -16,3 +16,7 @@ reports/zoning-preview/*.json
 # Hidden campaign material must never enter this checkout.
 private/
 hidden_*/
+# One-click generated environments, source bundles, logs and dependencies.
+.bench/
+vendor/
+artifacts/
