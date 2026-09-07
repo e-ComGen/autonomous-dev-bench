@@ -1,10 +1,13 @@
-"""GraphQL reads; package metadata only filters candidates and does not certify a build."""
+"""Bounded GraphQL metadata; paths aid rejection, never replace source/test qualification."""
 REPOSITORY_FIELDS = """
   id nameWithOwner isPrivate isFork isArchived
   primaryLanguage { name } licenseInfo { spdxId }
   projectConfig: object(expression: "HEAD:pyproject.toml") { __typename }
   setupScript: object(expression: "HEAD:setup.py") { __typename }
   setupConfig: object(expression: "HEAD:setup.cfg") { __typename }
+  testsTree: object(expression: "HEAD:tests") { __typename }
+  testTree: object(expression: "HEAD:test") { __typename }
+  testingTree: object(expression: "HEAD:testing") { __typename }
 """
 REPOSITORIES = """
 query($query: String!, $cursor: String) {
@@ -20,6 +23,7 @@ query($query: String!, $cursor: String) {
     pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest {
       id number createdAt mergedAt merged headRefOid changedFiles
+      files(first: 31) { totalCount pageInfo { hasNextPage } nodes { path changeType } }
       commits(first: 1) { totalCount }
       mergeCommit { oid parents(first: 3) { totalCount nodes { oid } } }
       closingIssuesReferences(first: 6, excludeUserLinked: true) {
