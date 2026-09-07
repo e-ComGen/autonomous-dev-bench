@@ -1,8 +1,8 @@
 """Real local source/worktree/tests negative control, explicitly not a model benchmark."""
 from pathlib import Path
-import os
 import shutil
 import sys
+import tempfile
 
 from benchmark_core.checkout import SharedGitCache, source_tree_digest
 from benchmark_core.execution import CommandSpec, ProcessRunner
@@ -32,10 +32,17 @@ def run_selftest(root: Path, report, timeout: int = 60) -> dict:
     source = root / "reference_projects/benchmark_selftest_project"
     if not source.is_dir():
         raise ValueError("BUNDLED_SELFTEST_PROJECT_MISSING")
-    repository = report.directory / "selftest-source"
-    shutil.copytree(source, repository, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.pyc"))
-    runner = ProcessRunner()
-    try:
+    # Git for Windows bounds GIT_DIR separately from core.longpaths. Runtime
+    # work must not inherit the nested pytest/report hierarchy.
+    scratch = root / ".bench/s"
+    if scratch.is_symlink():
+        raise ValueError("Selftest scratch directory must not be a symlink")
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="s-", dir=scratch) as temporary:
+        owned = Path(temporary)
+        repository = owned / "r"
+        shutil.copytree(source, repository, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.pyc"))
+        runner = ProcessRunner()
         _command(runner, ("git", "init", "-q"), repository)
         _command(runner, ("git", "config", "core.autocrlf", "false"), repository)
         _command(runner, ("git", "add", "."), repository)
@@ -43,9 +50,9 @@ def run_selftest(root: Path, report, timeout: int = 60) -> dict:
                           "-c", "commit.gpgsign=false", "commit", "-qm", "Local fixture snapshot"), repository)
         commit = _command(runner, ("git", "rev-parse", "HEAD"), repository)
         digest = source_tree_digest(repository)
-        snapshot = SharedGitCache(report.directory / "selftest-cache").ensure(
+        snapshot = SharedGitCache(owned / "c").ensure(
             str(repository), commit, expected_source_tree_digest=digest)
-        manager = WorktreeManager(report.directory / "selftest-worktrees")
+        manager = WorktreeManager(owned / "w")
         with manager.disposable(snapshot) as worktree:
             manager.verify_pristine(worktree, expected_source_tree_digest=digest)
             before, before_counts, before_log = _pytest(runner, report, worktree.path, "control-before", timeout)
@@ -67,6 +74,3 @@ def run_selftest(root: Path, report, timeout: int = 60) -> dict:
                            for name, counts, log in (("before", before_counts, before_log),
                                                      ("broken", broken_counts, broken_log),
                                                      ("restored", after_counts, after_log))]}
-    finally:
-        for name in ("selftest-source", "selftest-cache", "selftest-worktrees"):
-            shutil.rmtree(report.directory / name, ignore_errors=True)
