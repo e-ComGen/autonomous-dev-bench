@@ -1,0 +1,46 @@
+name: GitHub issue A-B
+on:
+  push:
+    branches: [feat/github-issue-ab]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-host-${{ matrix.os }}
+          path: artifacts/
+          retention-days: 7
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read earlier public native failure only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/e-ComGen/autonomous-dev-bench/actions/artifacts/10025771649/zip > /tmp/evidence.zip
+          python - <<'PY'
+          from zipfile import ZipFile
+          with ZipFile('/tmp/evidence.zip') as archive:
+              for name in archive.namelist():
+                  if name.endswith('.log'):
+                      print(name, archive.read(name).decode(errors='replace')[-12000:])
+          PY
