@@ -26,7 +26,8 @@ jobs:
       - name: Verify pinned real source and export offline seeds
         run: python tools/bench.py projects --allow-network
       - name: Download pinned universal test wheels
-        run: python -m pip download --only-binary=:all: --dest vendor/wheels -r tools/requirements-launcher.txt
+        run: |
+          python -m pip download --only-binary=:all: --dest vendor/wheels -r tools/requirements-launcher.txt
       - name: Assemble tracked source and offline payloads
         run: python tools/package_release.py
       - name: Exercise actual launcher without git metadata in a path with spaces
