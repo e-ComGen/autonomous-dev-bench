@@ -18,7 +18,7 @@ def test_official_gold_command_uses_v5_cli_and_task_repo():
     assert command[:3] == ("swebench", "eval", "verified")
     assert "--gold" in command
     assert command.count("-i") == 2
-    assert command[command.index("--task-repo") + 1] == "/tasks"
+    assert Path(command[command.index("--task-repo") + 1]) == Path("/tasks")
 
 
 def test_prediction_command_and_jsonl_are_canonical(tmp_path):
