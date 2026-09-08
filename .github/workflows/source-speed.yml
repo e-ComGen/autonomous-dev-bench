@@ -33,8 +33,35 @@ jobs:
             artifacts/source-tests.xml
             artifacts/source-speed.json
           retention-days: 7
+  real-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Real pinned GitHub issue through acquisition, native build, tests and replay
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/verify_native_issue.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-source-issue
+          path: |
+            artifacts/native-issue.json
+            artifacts/issue-process-*.log
+          retention-days: 7
   package:
-    needs: host
+    needs: [host, real-issue]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -51,7 +78,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api repos/e-ComGen/autonomous-dev-bench/actions/artifacts/10031359627/zip > native-base.zip
       - run: python tools/package_fast_acquisition.py native-base.zip
-      - name: Re-run the packaged Windows launcher with bundled dependencies and no .git
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: source-evidence-*
+          path: artifacts/acceptance
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-source-issue
+          path: artifacts/acceptance/native-source-issue
+      - run: python tools/attach_source_evidence.py
+      - name: Re-run packaged Windows launcher with bundled dependencies and no .git
         run: python tools/verify_release.py
       - uses: actions/upload-artifact@v4
         if: always()
