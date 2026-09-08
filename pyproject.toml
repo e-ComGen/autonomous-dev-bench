@@ -21,6 +21,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-cov>=5", "build>=1.2"]
+harbor = ["harbor==0.22.0; python_version >= '3.12'"]
 
 [project.scripts]
 autonomous-dev-bench = "cli.main:main"
