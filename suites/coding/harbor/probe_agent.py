@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -46,15 +47,19 @@ class HarborSubstrateProbeAgent(BaseAgent):
     ) -> None:
         workspace = HarborWorkspaceFacade(environment)
         baseline = await workspace.repository_head()
+        await workspace.require_clean_tracked_baseline()
+        baseline_untracked = await workspace.untracked_paths()
         await workspace.exec_checked("printf 'harbor substrate qualified\\n' > message.txt")
         status = await workspace.git_status()
-        patch = await workspace.git_diff()
+        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
         if "message.txt" not in status or not patch.strip():
             raise RuntimeError("Harbor substrate probe produced no observable repository patch")
 
         (self.logs_dir / "PATCH.diff").write_text(patch, encoding="utf-8")
         evidence = {
             "baseline_commit": baseline,
+            "baseline_untracked_count": len(baseline_untracked),
+            "baseline_untracked_sha256": hashlib.sha256("\0".join(baseline_untracked).encode("utf-8")).hexdigest(),
             "environment_id": getattr(environment, "environment_id", None),
             "instruction_received": bool(instruction.strip()),
             "model_called": False,
