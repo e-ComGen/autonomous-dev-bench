@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION",
+  "physical_host_os": "windows",
+  "controller_boundary": "powershell_to_wsl2",
+  "execution_backend": "docker_desktop_linux_engine",
+  "task_environment_os": "linux_container",
+  "native_windows_harbor_claimed": false,
+  "official_swebench_semantics_preserved": true,
+  "required": {
+    "wsl_version": 2,
+    "docker_ostype": "linux",
+    "python_inside_wsl": ">=3.12",
+    "harbor_version": "0.22.0",
+    "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "substrate_validator_pass": true,
+    "model_called": false
+  },
+  "evidence_path": "artifacts/harbor-phase2/windows-host/PHASE2_WINDOWS_HOST.json",
+  "cloud_provider_required": false
+}
