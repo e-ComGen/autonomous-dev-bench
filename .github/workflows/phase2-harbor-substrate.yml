@@ -9,8 +9,13 @@ on:
       - 'pyproject.toml'
       - 'suites/coding/harbor/**'
       - 'tests/harbor_phase2/**'
+      - 'tests/harbor_phase2_timeout/**'
+      - 'tests/harbor_phase2_network/**'
+      - 'tests/harbor_phase2_resources/**'
       - 'tests/coding/test_harbor_workspace.py'
       - 'tools/verify_harbor_phase2_substrate.py'
+      - 'tools/verify_harbor_phase2_lifecycle.py'
+      - 'tools/verify_harbor_phase2_cancellation.py'
 
 permissions:
   contents: read
@@ -18,7 +23,7 @@ permissions:
 jobs:
   substrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,6 +73,50 @@ jobs:
             --trials-dir artifacts/harbor-phase2/trials
       - name: Validate Harbor result, telemetry and patch export
         run: python tools/verify_harbor_phase2_substrate.py --trials-dir artifacts/harbor-phase2/trials
+      - name: Run Harbor agent-timeout probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/harbor-phase2/timeout
+          mkdir -p artifacts/harbor-phase2/timeout
+          set +e
+          harbor trials start \
+            -p tests/harbor_phase2_timeout \
+            --agent suites.coding.harbor.probe_agent:HarborTimeoutProbeAgent \
+            --trial-name phase2-timeout \
+            --trials-dir artifacts/harbor-phase2/timeout
+          echo "$?" > artifacts/harbor-phase2/timeout/cli-exit-code.txt
+          set -e
+      - name: Run Harbor no-network probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/harbor-phase2/network
+          harbor trials start \
+            -p tests/harbor_phase2_network \
+            --agent suites.coding.harbor.probe_agent:HarborNetworkProbeAgent \
+            --trial-name phase2-network \
+            --trials-dir artifacts/harbor-phase2/network
+      - name: Run Harbor CPU/RAM enforcement probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/harbor-phase2/resources
+          harbor trials start \
+            -p tests/harbor_phase2_resources \
+            --agent suites.coding.harbor.probe_agent:HarborResourceProbeAgent \
+            --cpus limit \
+            --memory limit \
+            --trial-name phase2-resources \
+            --trials-dir artifacts/harbor-phase2/resources
+      - name: Validate Harbor timeout, network and resource policies
+        run: |
+          python tools/verify_harbor_phase2_lifecycle.py \
+            --timeout-dir artifacts/harbor-phase2/timeout \
+            --network-dir artifacts/harbor-phase2/network \
+            --resource-dir artifacts/harbor-phase2/resources
+      - name: Qualify Harbor Trial cancellation and cleanup
+        run: python tools/verify_harbor_phase2_cancellation.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
