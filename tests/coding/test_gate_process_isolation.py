@@ -1,10 +1,15 @@
 """Real subprocess/pytest regressions for test-root collisions; no private runtime stand-in claims."""
 from pathlib import Path
-import os
+import importlib.util
 import pytest
 from tools.runtime_gate import checked_report, gate_identity, run_phases
-from tools.runtime_gate_worker import require_inputs
-from .gate_layout_fixture import layout, put
+
+# The benchmark intentionally has no tests/__init__.py. Load only this test
+# helper by its file path, without changing production test import policy.
+_spec = importlib.util.spec_from_file_location('gate_layout_fixture', Path(__file__).with_name('gate_layout_fixture.py'))
+_fixture = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_fixture)
+layout, put = _fixture.layout, _fixture.put
 
 
 def test_two_namespace_roots_collect_only_after_integration_completes(tmp_path, monkeypatch):
