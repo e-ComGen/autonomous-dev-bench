@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "repository": "harbor-framework/harbor",
+  "version": "0.22.0",
+  "commit": "d4509bbd3804f4b408527f476d764dacd988791d",
+  "python_requires": ">=3.12",
+  "role": "replaceable_execution_orchestration_substrate",
+  "grading_authority": "official_swebench_v5",
+  "phase": "PHASE2_SUBSTRATE_QUALIFICATION"
+}
