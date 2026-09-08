@@ -52,8 +52,25 @@ def assert_no_infrastructure_failure(report: dict[str, object], label: str) -> N
         raise ValueError(f"{label} contains infrastructure/evaluator failures: {nonempty}")
 
 
+def local_image_id(image: str) -> str | None:
+    """Return a local content ID when official evaluation retained the image."""
+
+    inspected = subprocess.run(
+        ("docker", "image", "inspect", "--format={{.Id}}", image),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if inspected.returncode != 0:
+        return None
+    image_id = inspected.stdout.strip()
+    if not image_id.startswith("sha256:") or len(image_id) != 71:
+        raise ValueError(f"unexpected Docker image ID for {image}: {image_id!r}")
+    return image_id
+
+
 def environment_evidence(task_repo: Path, tasks: tuple[str, ...]) -> dict[str, object]:
-    """Record exact task Dockerfiles and the images that official evaluation left locally."""
+    """Record task-repo-owned environment identities without depending on cleanup policy."""
 
     from swebench.task.repo import load_task_repo
 
@@ -68,19 +85,10 @@ def environment_evidence(task_repo: Path, tasks: tuple[str, ...]) -> dict[str, o
         if not isinstance(image, str) or not image:
             raise ValueError(f"{instance_id} has no image identity")
         dockerfile = task_repo / "tasks" / instance_id / "Dockerfile"
-        dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
-        inspected = subprocess.run(
-            ("docker", "image", "inspect", "--format={{.Id}}", image),
-            check=True,
-            text=True,
-            capture_output=True,
-        ).stdout.strip()
-        if not inspected.startswith("sha256:") or len(inspected) != 71:
-            raise ValueError(f"{instance_id} image does not have a content-addressed Docker ID")
         evidence[instance_id] = {
             "image": image,
-            "image_id": inspected,
-            "dockerfile_sha256": dockerfile_sha256,
+            "local_image_id": local_image_id(image),
+            "dockerfile_sha256": hashlib.sha256(dockerfile.read_bytes()).hexdigest(),
             "base_commit": instance.get("base_commit"),
         }
     return evidence
