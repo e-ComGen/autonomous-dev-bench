@@ -14,7 +14,8 @@ def authorize(settings, episodes, allowed):
         if input("Type YES to run both arms: ").strip() != "YES":
             raise ValueError("MODEL_SPEND_NOT_AUTHORIZED")
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-    if not key and sys.stdin.isatty():
+    # Explicit automation authorization never falls back to interactive key input.
+    if not key and not allowed and sys.stdin.isatty():
         key = getpass.getpass("DeepSeek API key (not saved): ").strip()
     if not key:
         raise ValueError("DEEPSEEK_API_KEY_MISSING")
