@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "sdk": {
+    "package": "deepseek-harness-sdk",
+    "version": "0.1.2rc1",
+    "wheel": "deepseek_harness_sdk-0.1.2rc1-py3-none-any.whl",
+    "sha256": "24689eec01e95233feb75ca08a0fe748b491e71682f80d2c04e6f9485f20488a"
+  },
+  "runtime": {
+    "package": "deepseek-harness-runtime-bin",
+    "version": "0.1.2rc1",
+    "linux_x86_64_wheel": "deepseek_harness_runtime_bin-0.1.2rc1-py3-none-manylinux_2_28_x86_64.whl",
+    "linux_x86_64_sha256": "670d8af06845cc2fc16738f1b030375321f3f8268837152aa3100e14a7b9887d"
+  },
+  "profile": "sdk",
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "qualification_reference": {
+    "repository": "deepseek-ai/deepseek-harness",
+    "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a"
+  }
+}
