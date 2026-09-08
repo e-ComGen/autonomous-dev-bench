@@ -12,7 +12,7 @@ import tarfile
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from suites.coding.adcp_loading import ADCP_COMMIT, load_adcp
+from suites.coding.adcp_loading import ADCP_COMMIT, load_adcp, verify_distribution
 
 
 def stage(source, target):
@@ -34,7 +34,7 @@ def stage(source, target):
                     if not member.isdir():
                         raise ValueError("ADCP distribution does not accept linked source")
                     continue
-                if relative.parts[0] not in {"packages", "docs"} and member.name != "README.md":
+                if relative.parts[0] not in {"packages", "docs", "tests"} and member.name != "README.md":
                     continue
                 payload = archive.extractfile(member).read()
                 destination = temporary / relative
@@ -52,6 +52,7 @@ def stage(source, target):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("source")
+    parser.add_argument("--target", default=str(ROOT / ".bench/adcp"))
     args = parser.parse_args()
-    stage(args.source, ROOT / ".bench/adcp")
-    print(json.dumps(load_adcp(ROOT)))
+    stage(args.source, Path(args.target))
+    verify_distribution(Path(args.target))

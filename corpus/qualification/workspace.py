@@ -22,10 +22,10 @@ class RepositoryWorkspace:
             path = directory / safe_path(relative)
             if any(parent.is_symlink() for parent in (path, *path.parents) if parent != directory.parent):
                 raise ValueError("LINKED_CANDIDATE")
-            if not path.is_file() or path.stat().st_size > 4194304:
+            before = base64.b64decode(record["data"], validate=True)
+            if not path.is_file() or path.stat().st_size > max(len(before), self.max_patch_bytes):
                 raise ValueError("DELETED_OR_OVERSIZED_CANDIDATE")
             payload = path.read_bytes()
-            before = base64.b64decode(record["data"])
             if payload == before:
                 continue
             if relative not in allowed:

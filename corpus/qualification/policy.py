@@ -26,8 +26,8 @@ class IssuePolicy:
     qualification_repeats: int = 2
     public_test_files: int = 8
     max_repository_bytes: int = 67108864
-    max_file_bytes: int = 4194304
-    max_code_bytes: int = 900000
+    max_file_bytes: int = 16777216
+    max_code_bytes: int = 16777216
     small_projects: int = 0
     medium_projects: int = 0
     large_projects: int = 0
@@ -40,7 +40,7 @@ class IssuePolicy:
                   "max_response_bytes": (1024, 8388608), "prepare_seconds": (30, 86400),
                   "fetch_seconds": (5, 900), "build_seconds": (10, 1800), "qualification_repeats": (2, 5),
                   "public_test_files": (1, 100), "max_repository_bytes": (1024, 268435456),
-                  "max_file_bytes": (1024, 16777216), "max_code_bytes": (1024, 900000),
+                  "max_file_bytes": (1024, 16777216), "max_code_bytes": (1024, 33488896),
                   "small_projects": (0, 100), "medium_projects": (0, 100), "large_projects": (0, 100)}
         for name, (low, high) in bounds.items():
             value = getattr(self, name)

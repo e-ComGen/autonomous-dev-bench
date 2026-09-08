@@ -14,7 +14,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
 from suites.coding.settings import load_settings
 from suites.coding.backend import backend_name
 ADCP_REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
-ADCP_COMMIT = "b9c933bd7727b86149da891c323a27cde5afc956"
+from suites.coding.adcp_loading import ADCP_COMMIT
 
 
 def selected_backend(arguments):
@@ -51,29 +51,8 @@ def read_token():
 
 
 def prepare_runtime():
-    target = ROOT / ".bench/adcp"
-    if target.is_symlink() or (ROOT / ".bench").is_symlink():
-        raise RuntimeError("Runtime storage must not be a symlink")
-    if (target / "SOURCE.json").is_file():
-        return
-    if not shutil.which("git"):
-        raise RuntimeError("Install Git before preparing ADCP")
-    token = read_token()
-    environment = clean_acquisition_environment()
-    environment["AUTOBENCH_GIT_AUTH"] = "AUTHORIZATION: basic " + base64.b64encode(("x-access-token:" + token).encode()).decode("ascii")
-    with tempfile.TemporaryDirectory(prefix="adb-source-") as temporary:
-        checkout = Path(temporary)
-        run_checked(["git", "-c", "core.longpaths=true", "init", "--quiet"], checkout, environment, 30)
-        command = ["git", "--config-env=http.https://github.com/.extraheader=AUTOBENCH_GIT_AUTH",
-                   "-c", "credential.helper=", "-c", "http.followRedirects=false", "-c", "core.longpaths=true",
-                   "fetch", "--quiet", "--depth=1", "--no-tags", ADCP_REPOSITORY, ADCP_COMMIT]
-        try:
-            run_checked(command, checkout, environment, 300)
-        finally:
-            environment.pop("AUTOBENCH_GIT_AUTH", None)
-        run_checked([sys.executable, str(ROOT / "tools/stage_ab_runtime.py"), str(checkout)], ROOT, environment, 120)
-    if not (target / "SOURCE.json").is_file():
-        raise RuntimeError("ADCP source staging produced no manifest")
+    from tools.runtime_install import ensure_runtime
+    ensure_runtime(ROOT, read_token, clean_acquisition_environment, run_checked)
 
 
 def main():

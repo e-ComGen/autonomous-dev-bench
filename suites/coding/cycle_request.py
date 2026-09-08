@@ -30,7 +30,7 @@ def compile_request(session, baseline, registry, settings, paths, objective):
     request = DevelopmentWorkRequest(request_id=session + "-request", session_id=session,
         zone_id=sc.ZoneId(value="benchmark-scope"), attempt=record, permit_id=sc.PermitId(value=session + "-permit"),
         baseline=baseline, evaluation_contract=contract.ref.artifact, write_scope=WriteScope(paths=tuple(paths)),
-        limits=SessionLimits(max_role_calls=16, max_repairs=2, max_verifications=4, max_source_bytes=1000000,
+        limits=SessionLimits(max_role_calls=16, max_repairs=2, max_verifications=4, max_source_bytes=33554432,
                              max_patch_bytes=settings.max_patch_bytes, action_timeout_seconds=settings.arm_seconds),
         objective=objective, workspace_id=session + "-workspace", workspace_generation=1,
         requirements=(objective,), context_refs=(contract.ref.artifact,))

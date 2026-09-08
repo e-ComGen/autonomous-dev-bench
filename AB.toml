@@ -34,3 +34,7 @@ public_test_files = 8
 small_projects = 0
 medium_projects = 0
 large_projects = 0
+
+# Exact source admission; unchanged assets remain present in both arms.
+max_file_bytes = 16777216
+max_code_bytes = 16777216

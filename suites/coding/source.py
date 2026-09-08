@@ -32,11 +32,11 @@ def snapshot_files(directory: Path) -> dict[str, str]:
         if path.is_symlink():
             raise ValueError("A candidate must not contain symlinks")
         if path.is_file():
-            if path.stat().st_size > 1000000:
+            if path.stat().st_size > 16777216:
                 raise ValueError("A candidate file exceeded the source bound")
-            result[relative.as_posix()] = path.read_text(encoding="utf-8")
-    if sum(len(value.encode()) for value in result.values()) > 1000000:
-        raise ValueError("The current ADCP source projection is limited to 1,000,000 bytes")
+            result[relative.as_posix()] = path.read_bytes().decode("utf-8")
+    if sum(len(value.encode()) for value in result.values()) > 33554432:
+        raise ValueError("The allocated ADCP source projection is limited to 32 MiB")
     return result
 
 
