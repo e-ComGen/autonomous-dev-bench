@@ -3,7 +3,6 @@ name: phase1-click-canary
 on:
   pull_request:
     paths:
-      - '.github/workflows/phase1-click-canary.yml'
       - 'tools/verify_native_issue.py'
       - 'corpus/qualification/**'
       - 'suites/coding/**'
