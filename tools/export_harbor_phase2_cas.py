@@ -32,6 +32,22 @@ def read_forbidden_env(names: list[str]) -> list[str]:
     return values
 
 
+def preflight_forbidden(paths: list[Path], forbidden_values: list[str]) -> None:
+    if not forbidden_values:
+        return
+    encoded = [value.encode("utf-8") for value in forbidden_values]
+    leaked: list[str] = []
+    for path in paths:
+        if path.is_symlink():
+            raise ValueError(f"CAS preflight rejects symlinks: {path}")
+        if path.is_file():
+            payload = path.read_bytes()
+            if any(value in payload for value in encoded):
+                leaked.append(str(path))
+    if leaked:
+        raise ValueError(f"forbidden secret material found before CAS export: {leaked}")
+
+
 def put_provenance(cas: FileSystemCAS, files: dict[str, Path]) -> dict[str, str]:
     refs: dict[str, str] = {}
     for name, path in files.items():
@@ -67,16 +83,22 @@ def main() -> int:
     result_path = unique_file(args.trials_dir, "result.json")
     trial_dir = result_path.parent
     forbidden_values = read_forbidden_env(args.forbid_env)
+    provenance_files = {
+        "harbor_lock": args.harbor_lock,
+        "deepseek_harness_lock": args.dsh_lock,
+        "deepseek_harness_wheel_closure": args.wheel_manifest,
+    }
+    for path in provenance_files.values():
+        if not path.is_file():
+            raise ValueError(f"provenance file does not exist: {path}")
+
+    # Preflight the complete source set before constructing FileSystemCAS, so a
+    # detected credential cannot leave even harmless provenance objects behind.
+    trial_files = [path for path in sorted(trial_dir.rglob("*")) if path.is_file() or path.is_symlink()]
+    preflight_forbidden(trial_files + list(provenance_files.values()), forbidden_values)
 
     cas = FileSystemCAS(args.cas_root)
-    provenance_refs = put_provenance(
-        cas,
-        {
-            "harbor_lock": args.harbor_lock,
-            "deepseek_harness_lock": args.dsh_lock,
-            "deepseek_harness_wheel_closure": args.wheel_manifest,
-        },
-    )
+    provenance_refs = put_provenance(cas, provenance_files)
     exported = export_harbor_trial_to_cas(
         trial_dir,
         cas,
