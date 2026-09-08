@@ -20,9 +20,9 @@ $ArtifactDir = Join-Path $RepoRoot "artifacts\harbor-phase2\windows-host"
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 $HostEvidencePath = Join-Path $ArtifactDir "host.json"
 
-foreach ($Command in @("wsl.exe", "docker.exe")) {
-    if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) {
-        Fail "$Command is missing. WSL2 and Docker Desktop are required."
+foreach ($CommandName in @("wsl.exe", "docker.exe")) {
+    if (-not (Get-Command $CommandName -ErrorAction SilentlyContinue)) {
+        Fail "$CommandName is missing. WSL2 and Docker Desktop are required."
     }
 }
 
@@ -54,12 +54,12 @@ if ($LASTEXITCODE -ne 0 -or -not $ContainerIdentity.StartsWith("Linux")) {
     Fail "Docker Desktop could not execute a Linux container. Observed: '$ContainerIdentity'"
 }
 
-$WslArgs = @()
+$WslPrefix = @()
 if (-not [string]::IsNullOrWhiteSpace($Distro)) {
-    $WslArgs += @("-d", $Distro)
+    $WslPrefix += @("-d", $Distro)
 }
-$WslArgs += @("--", "wslpath", "-a", $RepoRoot)
-$WslRepoRoot = (& wsl.exe @WslArgs 2>&1 | Out-String).Trim()
+
+$WslRepoRoot = (& wsl.exe @WslPrefix -- wslpath -a $RepoRoot 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($WslRepoRoot)) {
     Fail "Could not translate repository path into the WSL filesystem."
 }
@@ -85,33 +85,20 @@ $HostEvidence = [ordered]@{
         container_probe = $ContainerIdentity
     }
 }
-$HostEvidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $HostEvidencePath
+$HostJson = $HostEvidence | ConvertTo-Json -Depth 8
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($HostEvidencePath, $HostJson + [Environment]::NewLine, $Utf8NoBom)
 
-$WslEvidenceArgs = @()
-if (-not [string]::IsNullOrWhiteSpace($Distro)) {
-    $WslEvidenceArgs += @("-d", $Distro)
-}
-$WslEvidenceArgs += @("--", "wslpath", "-a", $HostEvidencePath)
-$WslHostEvidence = (& wsl.exe @WslEvidenceArgs 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) {
+$WslHostEvidence = (& wsl.exe @WslPrefix -- wslpath -a $HostEvidencePath 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($WslHostEvidence)) {
     Fail "Could not translate the evidence path into WSL."
 }
 
-function BashQuote([string]$Value) {
-    return "'" + $Value.Replace("'", "'\"'\"'") + "'"
-}
-
-$Command = "cd $(BashQuote $WslRepoRoot) && bash tools/qualify_windows_host_wsl.sh $(BashQuote $WslHostEvidence)"
-$RunArgs = @()
-if (-not [string]::IsNullOrWhiteSpace($Distro)) {
-    $RunArgs += @("-d", $Distro)
-}
-$RunArgs += @("--", "bash", "-lc", $Command)
-
+$WslScript = "$WslRepoRoot/tools/qualify_windows_host_wsl.sh"
 Write-Host "Windows host detected: $([Environment]::OSVersion.Version)"
 Write-Host "Docker Linux engine: $($DockerInfo.OperatingSystem) / $($DockerInfo.Architecture)"
 Write-Host "Running pinned Harbor qualification inside WSL2..."
-& wsl.exe @RunArgs
+& wsl.exe @WslPrefix -- bash $WslScript $WslHostEvidence
 if ($LASTEXITCODE -ne 0) {
     Fail "The WSL2 Harbor qualification failed. The error above identifies the missing prerequisite or failed gate."
 }
