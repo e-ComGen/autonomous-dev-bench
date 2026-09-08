@@ -15,7 +15,47 @@ commit d4509bbd3804f4b408527f476d764dacd988791d
 Python >= 3.12
 ```
 
-The remote-provider qualification additionally pins Daytona SDK `0.192.0` and its published wheel SHA256. Harbor remains optional so the benchmark core stays installable/testable on Python 3.11.
+Harbor remains optional so the benchmark core stays installable/testable on Python 3.11.
+
+## Windows-first host model
+
+The primary physical host for this project is Windows. The exact Harbor `0.22.0` pin does not expose a dedicated native-Windows execution environment, so Phase 2 does not pretend that official SWE-bench tasks are Windows-native.
+
+The supported primary path is:
+
+```text
+Windows physical PC
+  -> PowerShell entrypoint
+  -> WSL2 controller boundary
+  -> Docker Desktop Linux engine
+  -> Harbor Docker environment
+  -> Linux task container
+  -> official SWE-bench-compatible semantics
+```
+
+This means Linux is a property of the isolated benchmark task container, not a requirement for the physical machine. No cloud provider is required.
+
+The one-command host qualification entrypoint is:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\qualify_windows_host.ps1
+```
+
+It fails closed unless all of these are true:
+
+- physical host is Windows;
+- the selected/default WSL distribution is WSL2;
+- Docker Desktop is reachable from Windows;
+- Docker reports `OSType=linux`;
+- a real Linux container executes successfully;
+- Docker is reachable inside WSL2;
+- Python >=3.12 is available inside WSL2;
+- exact Harbor version and source commit match `HARBOR.lock.json`;
+- the accepted no-model Harbor substrate trial passes through Docker;
+- the existing independent substrate validator passes;
+- final evidence is emitted as `artifacts/harbor-phase2/windows-host/PHASE2_WINDOWS_HOST.json`.
+
+The qualification does not call a model and does not require any API key.
 
 ## Accepted internal gates
 
@@ -63,7 +103,7 @@ Harbor -> official SWE-bench v5 transport re-grade:
   boundary status PASS
 ```
 
-The official re-grade workflow is frozen to `workflow_dispatch` after acceptance so later documentation/provider commits do not repeatedly rebuild SWE-bench images.
+The official re-grade workflow is frozen to `workflow_dispatch` after acceptance so later host/documentation commits do not repeatedly rebuild SWE-bench images.
 
 ## Patch-boundary correction
 
@@ -71,53 +111,23 @@ Qualification found a real transport bug: a Harbor environment can contain pre-e
 
 `HarborWorkspaceFacade` now records the baseline untracked set before agent execution. Final patch export contains tracked changes plus only newly-created untracked paths. Dirty tracked baselines fail closed. Regression coverage preserves this invariant.
 
-## Remaining Phase 2 gate: Daytona remote Linux
+## Optional cloud challenger
 
-Phase 2 is **not yet fully accepted**. The only remaining acceptance gate is a real remote Linux execution through Harbor's Daytona environment.
-
-The gate is implemented in:
-
-```text
-.github/workflows/phase2-harbor-daytona.yml
-suites/coding/harbor/daytona_probe_agent.py
-tools/verify_harbor_phase2_daytona.py
-```
-
-It requires repository Actions secret:
-
-```text
-DAYTONA_API_KEY
-```
-
-The remote gate must prove all of the following before Phase 2 can become PASS:
-
-- Harbor reports environment type `daytona`;
-- an actual Daytona sandbox id exists (only its SHA256 is persisted);
-- execution reports Linux and records architecture;
-- the same workspace patch boundary works remotely;
-- independent verifier reward is 1.0;
-- input/cache/output model token counters and cost are zero;
-- no paid model is called;
-- the controller `DAYTONA_API_KEY` value is absent from persisted trial artifacts.
-
-Because a newly-added `workflow_dispatch` workflow cannot be manually dispatched before it exists on the default branch, this PR also supports a same-repository `pull_request` trigger scoped only to:
-
-```text
-migration/daytona_remote_qualification.trigger
-```
-
-After `DAYTONA_API_KEY` is configured, creating/updating that trigger file starts the qualification without merging Phase 2 to `main`. Fork pull requests are excluded from the credentialed job.
+Daytona remains pinned only as an optional remote-provider challenger. It is not a Phase 2 requirement, no `DAYTONA_API_KEY` is required for the Windows-first path, and an unrun Daytona workflow does not block Phase 2 acceptance.
 
 ## Phase 2 exit
 
-Phase 2 becomes PASS only after a real Daytona artifact contains:
+The only host-specific evidence still required is a real run on the intended Windows PC producing:
 
 ```text
-scope: PHASE2_HARBOR_REMOTE_PROVIDER_DAYTONA
+scope: PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION
 status: PASS
+physical_host_os: windows
+execution_backend: docker_desktop_linux_engine
+model_called: false
 ```
 
-Until then the precise state is:
+Current state:
 
 ```text
 LOCAL_HARBOR_SUBSTRATE: PASS
@@ -125,8 +135,9 @@ LIFECYCLE_CANCELLATION_NETWORK_RESOURCES: PASS
 STOCK_DEEPSEEK_HARBOR_TRANSPORT: PASS
 IMMUTABLE_CAS_EXPORT: PASS
 OFFICIAL_SWEBENCH_V5_REGRADE_BOUNDARY: PASS
-REMOTE_DAYTONA_PROVIDER: NOT_RUN
-PHASE2: BLOCKED_ON_REMOTE_PROVIDER_CREDENTIAL_AND_RUN
+WINDOWS_PHYSICAL_HOST: NOT_RUN
+OPTIONAL_DAYTONA_CHALLENGER: NOT_REQUIRED
+PHASE2: BLOCKED_ONLY_ON_WINDOWS_HOST_QUALIFICATION
 ```
 
 The shared ModelBudgetGateway and ADCPAgent remain Phase 3 work.
