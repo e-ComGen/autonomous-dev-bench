@@ -96,6 +96,20 @@ jobs:
           (environment / 'Dockerfile').write_text(f'FROM {image}\nWORKDIR /testbed\n', encoding='utf-8')
           print(f'Harbor wrapper uses official local image: {image}')
           PY
+      - name: Capture official image identity before Harbor lifecycle cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="$(python - <<'PY'
+          import os
+          from swebench.task.repo import load_task_repo
+          print(load_task_repo('.phase2-tasks', [os.environ['INSTANCE_ID']])[0]['image'])
+          PY
+          )"
+          IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
+          case "$IMAGE_ID" in sha256:*) ;; *) echo "non-content-addressed image id: $IMAGE_ID" >&2; exit 1;; esac
+          echo "OFFICIAL_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
+          printf '%s\n' "$IMAGE_ID" > artifacts/harbor-phase2/official-image-id.txt
       - name: Run Harbor no-model patch transport trial
         run: |
           rm -rf artifacts/harbor-phase2/official-regrade/harbor
@@ -108,7 +122,8 @@ jobs:
         run: |
           python tools/verify_harbor_phase2_official_regrade.py \
             --trials-dir artifacts/harbor-phase2/official-regrade/harbor \
-            --task-repo .phase2-tasks
+            --task-repo .phase2-tasks \
+            --official-image-id "${OFFICIAL_IMAGE_ID}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
