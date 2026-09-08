@@ -9,6 +9,7 @@ on:
       - "packages/benchmark_core/benchmark_core/experiment_manifest.py"
       - "packages/benchmark_core/benchmark_core/swebench_v5.py"
       - "tools/verify_swebench_v5_parity.py"
+      - "tools/verify_native_issue.py"
       - "tests/core/test_experiment_manifest.py"
       - "tests/core/test_swebench_v5.py"
 
@@ -82,12 +83,19 @@ jobs:
           --workers 2
           --timeout 1800
 
-      - name: Upload parity evidence and official logs
+      - name: Re-run frozen Click migration canary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/verify_native_issue.py
+
+      - name: Upload Phase 1 acceptance evidence and official logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: swebench-v5-parity-${{ github.run_id }}
           path: |
             artifacts/swebench-v5-parity/**
+            artifacts/native-issue.json
+            artifacts/issue-process-*.log
           if-no-files-found: warn
           retention-days: 14
