@@ -1,0 +1,118 @@
+name: phase2-harbor-official-regrade
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/phase2-harbor-official-regrade.yml'
+      - 'HARBOR.lock.json'
+      - 'migration/swebench_v5_verified_parity.json'
+      - 'packages/benchmark_core/benchmark_core/swebench_v5.py'
+      - 'suites/coding/harbor/workspace.py'
+      - 'suites/coding/harbor/official_regrade_agent.py'
+      - 'tests/harbor_phase2_official_regrade/**'
+      - 'tools/verify_harbor_phase2_official_regrade.py'
+
+permissions:
+  contents: read
+
+jobs:
+  official-regrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SWEBENCH_VERSION: '5.0.2'
+      SWEBENCH_WHEEL_SHA256: b7f0416a1e686eca22c2f749b5f816685a202835032f6683080e2b53545bbb62
+      TASK_REPO_COMMIT: 3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d
+      INSTANCE_ID: psf__requests-1142
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install benchmark tests
+        run: python -m pip install -e '.[dev]'
+      - name: Fetch exact Harbor source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARBOR_COMMIT="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['commit'])")"
+          rm -rf .phase2-harbor
+          git init .phase2-harbor
+          git -C .phase2-harbor remote add origin https://github.com/harbor-framework/harbor.git
+          git -C .phase2-harbor fetch --depth=1 origin "$HARBOR_COMMIT"
+          git -C .phase2-harbor checkout --detach FETCH_HEAD
+          test "$(git -C .phase2-harbor rev-parse HEAD)" = "$HARBOR_COMMIT"
+          python -m pip install -e .phase2-harbor
+      - name: Download and verify official SWE-bench wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .phase2-swebench-dist
+          mkdir -p .phase2-swebench-dist
+          python -m pip download --no-deps --only-binary=:all: "swebench==${SWEBENCH_VERSION}" -d .phase2-swebench-dist
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          wheels = list(Path('.phase2-swebench-dist').glob('swebench-*.whl'))
+          if len(wheels) != 1:
+              raise SystemExit(f'expected exactly one SWE-bench wheel, found {wheels}')
+          digest = hashlib.sha256(wheels[0].read_bytes()).hexdigest()
+          expected = os.environ['SWEBENCH_WHEEL_SHA256']
+          if digest != expected:
+              raise SystemExit(f'SWE-bench wheel digest mismatch: expected {expected}, observed {digest}')
+          print(f'official SWE-bench wheel verified: {wheels[0].name} sha256={digest}')
+          PY
+          python -m pip install .phase2-swebench-dist/swebench-*.whl
+      - name: Fetch exact SWE-bench task repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .phase2-tasks
+          git init .phase2-tasks
+          git -C .phase2-tasks remote add origin https://github.com/SWE-bench/swe-bench-tasks.git
+          git -C .phase2-tasks fetch --depth=1 origin "${TASK_REPO_COMMIT}"
+          git -C .phase2-tasks checkout --detach FETCH_HEAD
+          test "$(git -C .phase2-tasks rev-parse HEAD)" = "${TASK_REPO_COMMIT}"
+      - name: Build the pinned official task image once
+        run: swebench images build .phase2-tasks -i "${INSTANCE_ID}" -j 1
+      - name: Wrap the exact local official image as a Harbor task environment
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from swebench.task.repo import load_task_repo
+
+          instance_id = os.environ['INSTANCE_ID']
+          instance = load_task_repo('.phase2-tasks', [instance_id])[0]
+          image = instance['image']
+          environment = Path('tests/harbor_phase2_official_regrade/environment')
+          environment.mkdir(parents=True, exist_ok=True)
+          (environment / 'Dockerfile').write_text(f'FROM {image}\nWORKDIR /testbed\n', encoding='utf-8')
+          print(f'Harbor wrapper uses official local image: {image}')
+          PY
+      - name: Run Harbor no-model patch transport trial
+        run: |
+          rm -rf artifacts/harbor-phase2/official-regrade/harbor
+          harbor trials start \
+            -p tests/harbor_phase2_official_regrade \
+            --agent suites.coding.harbor.official_regrade_agent:HarborOfficialRegradeProbeAgent \
+            --trial-name phase2-official-regrade \
+            --trials-dir artifacts/harbor-phase2/official-regrade/harbor
+      - name: Re-grade the exact Harbor patch with official SWE-bench v5
+        run: |
+          python tools/verify_harbor_phase2_official_regrade.py \
+            --trials-dir artifacts/harbor-phase2/official-regrade/harbor \
+            --task-repo .phase2-tasks
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase2-harbor-official-regrade-${{ github.run_id }}
+          path: artifacts/harbor-phase2/**
+          if-no-files-found: warn
+          retention-days: 14
