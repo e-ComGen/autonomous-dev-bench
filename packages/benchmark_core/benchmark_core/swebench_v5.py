@@ -87,11 +87,25 @@ class OfficialSwebenchV5:
         require_identifier(run_id, "run_id")
         return working_directory / "logs" / "evaluation" / run_id / "results.json"
 
+    def locate_results(self, working_directory: Path, run_id: str) -> Path:
+        """Locate the summary emitted by the pinned official package, without re-grading it."""
+
+        canonical = self.results_path(working_directory, run_id)
+        if canonical.is_file():
+            return canonical
+        legacy = sorted(working_directory.glob(f"*.{run_id}.json"))
+        if len(legacy) != 1:
+            raise FileNotFoundError(
+                f"expected one official SWE-bench summary for {run_id!r}; "
+                f"canonical={canonical}, legacy_candidates={legacy}"
+            )
+        return legacy[0]
+
     def load_results(self, working_directory: Path, run_id: str) -> dict[str, object]:
-        path = self.results_path(working_directory, run_id)
+        path = self.locate_results(working_directory, run_id)
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
-            raise ValueError("official SWE-bench results.json must contain an object")
+            raise ValueError("official SWE-bench result summary must contain an object")
         return payload
 
     def _command(
