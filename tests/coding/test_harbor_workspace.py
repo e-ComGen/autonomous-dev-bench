@@ -28,6 +28,7 @@ def test_workspace_facade_uses_repository_root_and_returns_git_evidence():
         FakeResult(stdout="abc123\n"),
         FakeResult(stdout=" M message.txt\n"),
         FakeResult(stdout="diff --git a/message.txt b/message.txt\n"),
+        FakeResult(stdout=""),
     ])
     workspace = HarborWorkspaceFacade(environment, "/repo")
 
@@ -38,6 +39,23 @@ def test_workspace_facade_uses_repository_root_and_returns_git_evidence():
 
     asyncio.run(exercise())
     assert all(call[1]["cwd"] == "/repo" for call in environment.calls)
+
+
+def test_workspace_facade_exports_untracked_files_without_staging_them():
+    environment = FakeEnvironment([
+        FakeResult(stdout=""),
+        FakeResult(stdout="new file.txt\0binary.dat\0"),
+        FakeResult(stdout="diff --git a/new file.txt b/new file.txt\nnew file mode 100644\n", return_code=1),
+        FakeResult(stdout="diff --git a/binary.dat b/binary.dat\nnew file mode 100644\n", return_code=1),
+    ])
+    workspace = HarborWorkspaceFacade(environment, "/repo")
+
+    patch = asyncio.run(workspace.git_diff())
+
+    assert "new file.txt" in patch
+    assert "binary.dat" in patch
+    assert "git add" not in "\n".join(call[0] for call in environment.calls)
+    assert any("'new file.txt'" in call[0] for call in environment.calls)
 
 
 def test_workspace_facade_fails_closed_on_nonzero_command():
