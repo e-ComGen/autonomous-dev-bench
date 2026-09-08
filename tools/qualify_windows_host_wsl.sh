@@ -57,7 +57,7 @@ fi
 [[ "$(git -C "$HARBOR_SRC" rev-parse HEAD)" == "$HARBOR_COMMIT" ]] || fail "Harbor source commit mismatch"
 
 if [[ ! -x "$VENV/bin/python" ]]; then
-  "$PYTHON" -m venv "$VENV"
+  "$PYTHON" -m venv "$VENV" || fail "Python venv support is missing inside WSL (install the matching python3.12-venv/python3.13-venv package)"
 fi
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q --upgrade pip
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q "$ROOT[dev]"
