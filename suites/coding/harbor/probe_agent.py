@@ -1,7 +1,8 @@
-"""No-model Harbor agent used only to qualify the execution substrate boundary."""
+"""No-model Harbor agents used only to qualify execution substrate boundaries."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -10,6 +11,14 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from .workspace import HarborWorkspaceFacade
+
+
+def _record_context(context: AgentContext, evidence: dict[str, object]) -> None:
+    context.n_input_tokens = 0
+    context.n_cache_tokens = 0
+    context.n_output_tokens = 0
+    context.cost_usd = 0.0
+    context.metadata = {"autonomous_dev_bench": evidence}
 
 
 class HarborSubstrateProbeAgent(BaseAgent):
@@ -55,8 +64,139 @@ class HarborSubstrateProbeAgent(BaseAgent):
             json.dumps(evidence, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        context.n_input_tokens = 0
-        context.n_cache_tokens = 0
-        context.n_output_tokens = 0
-        context.cost_usd = 0.0
-        context.metadata = {"autonomous_dev_bench": evidence}
+        _record_context(context, evidence)
+
+
+class HarborTimeoutProbeAgent(BaseAgent):
+    """Sleep past the task's agent timeout so Harbor must terminate the phase."""
+
+    @staticmethod
+    def name() -> str:
+        return "autobench-harbor-timeout-probe"
+
+    def __init__(self, logs_dir: Path, model_name: str | None = None, **kwargs):
+        super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
+
+    def version(self) -> str:
+        return "1.0.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        await asyncio.sleep(30)
+
+
+class HarborNetworkProbeAgent(BaseAgent):
+    """Require an agent-phase no-network policy to deny a real HTTPS request."""
+
+    @staticmethod
+    def name() -> str:
+        return "autobench-harbor-network-probe"
+
+    def __init__(self, logs_dir: Path, model_name: str | None = None, **kwargs):
+        super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
+
+    def version(self) -> str:
+        return "1.0.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        workspace = HarborWorkspaceFacade(environment)
+        await workspace.exec_checked("curl --version >/dev/null")
+        result = await environment.exec(
+            "curl -fsS --connect-timeout 2 --max-time 4 https://example.com >/tmp/egress.out 2>/tmp/egress.err",
+            cwd=workspace.repository_root,
+        )
+        if result.return_code == 0:
+            raise RuntimeError("Harbor no-network policy allowed public HTTPS egress")
+        await workspace.exec_checked("printf 'blocked\\n' > network-blocked.txt")
+        evidence = {
+            "environment_id": getattr(environment, "environment_id", None),
+            "model_called": False,
+            "egress_return_code": result.return_code,
+            "egress_stderr": (result.stderr or "")[-1000:],
+        }
+        (self.logs_dir / "NETWORK_PROBE.json").write_text(
+            json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        _record_context(context, evidence)
+
+
+class HarborResourceProbeAgent(BaseAgent):
+    """Read cgroup-v2 limits applied by Harbor's Docker resource policy."""
+
+    @staticmethod
+    def name() -> str:
+        return "autobench-harbor-resource-probe"
+
+    def __init__(self, logs_dir: Path, model_name: str | None = None, **kwargs):
+        super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
+
+    def version(self) -> str:
+        return "1.0.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        workspace = HarborWorkspaceFacade(environment)
+        memory_max = (await workspace.exec_checked("cat /sys/fs/cgroup/memory.max")).strip()
+        cpu_max = (await workspace.exec_checked("cat /sys/fs/cgroup/cpu.max")).strip()
+        evidence = {
+            "environment_id": getattr(environment, "environment_id", None),
+            "model_called": False,
+            "memory_max": memory_max,
+            "cpu_max": cpu_max,
+        }
+        (self.logs_dir / "RESOURCE_PROBE.json").write_text(
+            json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        await workspace.exec_checked("printf 'observed\\n' > resource-observed.txt")
+        _record_context(context, evidence)
+
+
+class HarborCancellationProbeAgent(BaseAgent):
+    """Expose a running signal and hang until the containing Trial is cancelled."""
+
+    @staticmethod
+    def name() -> str:
+        return "autobench-harbor-cancellation-probe"
+
+    def __init__(self, logs_dir: Path, model_name: str | None = None, **kwargs):
+        super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
+        self.running = asyncio.Event()
+
+    def version(self) -> str:
+        return "1.0.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        self.running.set()
+        await asyncio.sleep(3600)
