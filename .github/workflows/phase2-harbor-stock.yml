@@ -10,8 +10,11 @@ on:
       - 'suites/coding/harbor/stock_agent.py'
       - 'suites/coding/harbor/stock_runtime_runner.py'
       - 'suites/coding/harbor/workspace.py'
+      - 'suites/coding/harbor/cas_export.py'
       - 'tests/harbor_phase2_stock/**'
+      - 'tests/coding/test_harbor_cas_export.py'
       - 'tools/verify_harbor_phase2_stock.py'
+      - 'tools/export_harbor_phase2_cas.py'
 
 permissions:
   contents: read
@@ -116,6 +119,13 @@ jobs:
             --trials-dir artifacts/harbor-phase2/stock
       - name: Validate stock harness identity, accounting, secret boundary and patch
         run: python tools/verify_harbor_phase2_stock.py --trials-dir artifacts/harbor-phase2/stock
+      - name: Export qualified Harbor trial into immutable CAS
+        env:
+          AUTOBENCH_DEEPSEEK_API_KEY: PHASE2_FAKE_KEY_DO_NOT_PERSIST
+        run: |
+          python tools/export_harbor_phase2_cas.py \
+            --trials-dir artifacts/harbor-phase2/stock \
+            --forbid-env AUTOBENCH_DEEPSEEK_API_KEY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
