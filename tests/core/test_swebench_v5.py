@@ -43,3 +43,30 @@ def test_results_path_matches_official_v5_layout(tmp_path):
     evaluator = OfficialSwebenchV5()
     expected = tmp_path / "logs" / "evaluation" / "parity" / "results.json"
     assert evaluator.results_path(tmp_path, "parity") == expected
+
+
+def test_locate_results_prefers_canonical_v5_layout(tmp_path):
+    evaluator = OfficialSwebenchV5()
+    canonical = evaluator.results_path(tmp_path, "parity")
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("{}", encoding="utf-8")
+    (tmp_path / "legacy.parity.json").write_text("{}", encoding="utf-8")
+
+    assert evaluator.locate_results(tmp_path, "parity") == canonical
+
+
+def test_locate_results_accepts_one_official_legacy_summary(tmp_path):
+    evaluator = OfficialSwebenchV5()
+    legacy = tmp_path / "model.parity.json"
+    legacy.write_text("{}", encoding="utf-8")
+
+    assert evaluator.locate_results(tmp_path, "parity") == legacy
+
+
+def test_locate_results_fails_closed_on_ambiguous_legacy_summaries(tmp_path):
+    evaluator = OfficialSwebenchV5()
+    (tmp_path / "one.parity.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "two.parity.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        evaluator.locate_results(tmp_path, "parity")
