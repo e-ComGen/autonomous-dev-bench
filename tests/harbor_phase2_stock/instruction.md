@@ -1,0 +1,1 @@
+Using the stock DeepSeek Harness coding tools in this repository, create `/workspace/stock-harness.txt` with exactly `created by stock deepseek harness` followed by a newline. Leave the repository change uncommitted.
