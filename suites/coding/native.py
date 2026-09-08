@@ -1,4 +1,4 @@
-"""One actual native driver shared by the stock arm and ADCP semantic roles."""
+"""One actual native driver shared by stock DSH and all ADCP semantic roles."""
 from pathlib import Path
 import json
 import time
@@ -11,15 +11,19 @@ class NativeDriver:
     def __init__(self, docker, directory, settings, token, deadline=None, workspace_adapter=None):
         self.docker, self.directory, self.settings = docker, Path(directory), settings
         self.token = token
-        self.deadline = deadline or time.monotonic() + settings.arm_seconds
+        self.deadline = deadline if deadline is not None else time.monotonic() + settings.arm_seconds
         self.workspace_adapter = workspace_adapter
         self.invocations = []
         self.last_candidate = None
 
-    def invoke(self, files, prompt, *, boot_only=False):
-        remaining = self.deadline - time.monotonic()
-        if remaining < 1:
+    def remaining(self):
+        value = self.deadline - time.monotonic()
+        if value < 1:
             raise TimeoutError("ARM_TIME_BUDGET_EXHAUSTED")
+        return value
+
+    def invoke(self, files, prompt, *, boot_only=False):
+        self.remaining()
         directory = self.directory / ("native-" + uuid4().hex[:10])
         if self.workspace_adapter:
             self.workspace_adapter.materialize(files, directory / "workspace")
@@ -28,12 +32,14 @@ class NativeDriver:
         inputs = directory / "input"
         inputs.mkdir()
         endpoint = self.docker.endpoint(self.token) if hasattr(self.docker, "endpoint") else f"http://model-relay:8787/{self.token}"
+        # Materialization consumes this arm's time; it must never renew the model deadline.
+        remaining = self.remaining()
         request = {"model": self.settings.model, "max_tokens": self.settings.output_tokens_per_request,
                    "endpoint": endpoint, "timeout": remaining,
                    "session_id": "bench-" + uuid4().hex, "prompt": prompt, "boot_only": boot_only}
         (inputs / "request.json").write_text(json.dumps(request), encoding="utf-8")
         execution = self.docker.run(directory, network=self.docker.network if not boot_only else "none",
-                                    entrypoint=("-I", "/driver/native_driver.py"), timeout=remaining, input_path=inputs)
+                                    entrypoint=("-I", "/driver/native_driver.py"), timeout=self.remaining(), input_path=inputs)
         self.invocations.append({"session_id": request["session_id"], "returncode": execution.returncode,
                                  "timed_out": execution.timed_out, "wall_seconds": execution.wall_time_seconds})
         if not execution.succeeded:
