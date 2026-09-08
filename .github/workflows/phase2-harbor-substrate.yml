@@ -109,14 +109,14 @@ jobs:
             --memory limit \
             --trial-name phase2-resources \
             --trials-dir artifacts/harbor-phase2/resources
+      - name: Qualify Harbor Trial cancellation and cleanup
+        run: python tools/verify_harbor_phase2_cancellation.py
       - name: Validate Harbor timeout, network and resource policies
         run: |
           python tools/verify_harbor_phase2_lifecycle.py \
             --timeout-dir artifacts/harbor-phase2/timeout \
             --network-dir artifacts/harbor-phase2/network \
             --resource-dir artifacts/harbor-phase2/resources
-      - name: Qualify Harbor Trial cancellation and cleanup
-        run: python tools/verify_harbor_phase2_cancellation.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
