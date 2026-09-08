@@ -1,0 +1,1 @@
+Produce only the benchmark transport marker used to qualify patch extraction. Do not access external networks, benchmark gold patches, hidden tests, or reference answer material. No model call is permitted.
