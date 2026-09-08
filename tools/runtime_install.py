@@ -10,6 +10,7 @@ import threading
 import time
 from uuid import uuid4
 from suites.coding.adcp_loading import ADCP_COMMIT, verify_distribution
+from tools.launcher_lock import launcher_lock
 
 REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
 
@@ -17,16 +18,22 @@ REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
 def ensure_runtime(root, read_token, clean_environment, run_checked):
     root = Path(root)
     state = root / '.bench'
-    state.mkdir(exist_ok=True)
-    target = state / 'adcp'
-    if state.is_symlink() or target.is_symlink():
+    if state.is_symlink() or (state / 'adcp').is_symlink() or (state / 'launcher.lock').is_symlink():
         raise ValueError("Runtime storage must not be a symlink")
+    # Reuse the bootstrap owner: two clicks must not race validation or directory replacement.
+    with launcher_lock(state / 'launcher.lock'):
+        _ensure_runtime(root, read_token, clean_environment, run_checked)
+
+
+def _ensure_runtime(root, read_token, clean_environment, run_checked):
+    state, target = root / '.bench', root / '.bench/adcp'
     manifest = target / 'SOURCE.json'
     if manifest.is_file():
         metadata = json.loads(manifest.read_text(encoding='utf-8'))
         if metadata.get('commit') == ADCP_COMMIT:
             verify_distribution(target)
             validate_runtime(root, target, clean_environment(), run_checked)
+            verify_distribution(target)
             return
     if not shutil.which('git'):
         raise RuntimeError('Install Git before preparing ADCP')
@@ -50,6 +57,8 @@ def ensure_runtime(root, read_token, clean_environment, run_checked):
                          '--target', str(staged)], root, environment, 120)
         verify_distribution(staged)
         validate_runtime(root, staged, environment, run_checked)
+        # Validation executes trusted tests; verify they left immutable production bytes intact.
+        verify_distribution(staged)
         backup = state / ('adcp-backup-' + uuid4().hex[:10])
         if target.exists():
             os.rename(target, backup)
@@ -61,6 +70,7 @@ def ensure_runtime(root, read_token, clean_environment, run_checked):
             raise
         print('Runtime: verified upgrade activated; previous files preserved', flush=True)
     finally:
+        environment.pop('AUTOBENCH_GIT_AUTH', None)
         if staged.exists():
             shutil.rmtree(staged)
 
@@ -79,7 +89,10 @@ def validate_runtime(root, distribution, environment, run_checked):
                  'install', '--only-binary=:all:', 'pytest-subtests==0.14.2'], root, environment, 120)
     print('Runtime: actual snapshot/role/verification regression gate (no model calls)', flush=True)
     run_gate(root, distribution, python, environment)
-    if not marker.is_file() or json.loads(marker.read_text()).get('identity') != identity:
+    if not marker.is_file():
+        raise RuntimeError('ADCP_RUNTIME_QUALIFICATION_MISSING')
+    qualified = json.loads(marker.read_text(encoding='utf-8'))
+    if qualified.get('identity') != identity or qualified.get('status') != 'PASS':
         raise RuntimeError('ADCP_RUNTIME_QUALIFICATION_MISSING')
 
 

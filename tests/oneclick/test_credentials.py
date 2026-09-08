@@ -107,6 +107,8 @@ def test_paid_default_still_requires_real_credential_fields(tmp_path, missing):
 
 
 def test_missing_token_fails_before_bootstrap_and_never_prompts(tmp_path, monkeypatch, capsys):
+    # This unit test isolates credential preflight; real interpreter dispatch is tested separately.
+    monkeypatch.setattr(sys, 'version_info', (3, 12))
     monkeypatch.setattr("subprocess.call", lambda *args, **kwargs: pytest.fail("Must not bootstrap"))
     assert main(["ab"], root=tmp_path) == 2
     assert (tmp_path / ".env").is_file()
@@ -146,6 +148,7 @@ def test_secret_environment_restored_after_failure(tmp_path, monkeypatch):
 
 
 def test_actual_main_dispatch_is_noninteractive_and_preserves_host_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, 'version_info', (3, 12))
     configured(tmp_path)
     seen = []
     def dispatch(argv, **kwargs):
@@ -173,3 +176,12 @@ def test_batch_entrypoints_have_no_confirmation_or_pause():
         text = (root / name).read_text().lower()
         assert "choice" not in text and "set /p" not in text and "pause" not in text
     assert "start_ready.py" in (root / "START.cmd").read_text()
+
+
+def test_old_python_stops_before_credentials_and_dispatch(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'version_info', (3, 11))
+    monkeypatch.setattr('subprocess.call', lambda *args, **kwargs: pytest.fail('Must not dispatch'))
+    assert main(['ab'], root=tmp_path) == 2
+    assert not (tmp_path / '.env').exists()
+    assert 'Python 3.12 or newer' in capsys.readouterr().err
+    assert json.loads((tmp_path / '.bench/startup.json').read_text())['status'] == 'BLOCKED'

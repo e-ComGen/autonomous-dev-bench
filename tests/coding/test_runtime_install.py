@@ -74,3 +74,51 @@ def test_undeclared_python_is_not_imported(tmp_path):
     (tmp_path / 'runtime/extra.py').write_text('# undeclared\n')
     with pytest.raises(ValueError, match='undeclared Python'):
         verify_distribution(tmp_path / 'runtime')
+
+
+def test_second_installer_cannot_race_bootstrap_or_active_campaign(tmp_path):
+    from tools.launcher_lock import launcher_lock
+    def forbidden(*args):
+        raise AssertionError('Busy installer must not request credentials or execute')
+    with launcher_lock(tmp_path / '.bench/launcher.lock'):
+        with pytest.raises(RuntimeError, match='Another launcher'):
+            installer.ensure_runtime(tmp_path, forbidden, forbidden, forbidden)
+
+
+def test_gate_mutation_prevents_activation_and_preserves_old_runtime(tmp_path, monkeypatch):
+    target = tmp_path / '.bench/adcp'
+    distribution(target, 'old-pin')
+    original = (target / 'SOURCE.json').read_bytes()
+    monkeypatch.setattr(installer.shutil, 'which', lambda _: 'git')
+    def checked(argv, directory, environment, timeout):
+        if '--target' in argv:
+            distribution(Path(argv[argv.index('--target')+1]))
+    def mutate(root, staged, *args):
+        (staged / 'packages/zone_development/workspace.py').write_bytes(b'# mutation during gate\n')
+    monkeypatch.setattr(installer, 'validate_runtime', mutate)
+    with pytest.raises(ValueError, match='integrity mismatch'):
+        installer.ensure_runtime(tmp_path, lambda: 'unit-test-token', lambda: {}, checked)
+    assert (target / 'SOURCE.json').read_bytes() == original
+    assert not list((tmp_path / '.bench').glob('adcp-backup-*'))
+    assert not list((tmp_path / '.bench').glob('.adcp-upgrade-*'))
+
+
+def test_directory_activation_error_rolls_back_original(tmp_path, monkeypatch):
+    target = tmp_path / '.bench/adcp'
+    distribution(target, 'old-pin')
+    original = (target / 'SOURCE.json').read_bytes()
+    monkeypatch.setattr(installer.shutil, 'which', lambda _: 'git')
+    def checked(argv, directory, environment, timeout):
+        if '--target' in argv:
+            distribution(Path(argv[argv.index('--target')+1]))
+    rename = installer.os.rename
+    def fail_activation(source, destination):
+        if Path(source).name.startswith('.adcp-upgrade-'):
+            raise OSError('activation denied')
+        return rename(source, destination)
+    monkeypatch.setattr(installer.os, 'rename', fail_activation)
+    monkeypatch.setattr(installer, 'validate_runtime', lambda *args: None)
+    with pytest.raises(OSError, match='activation denied'):
+        installer.ensure_runtime(tmp_path, lambda: 'unit-test-token', lambda: {}, checked)
+    assert (target / 'SOURCE.json').read_bytes() == original
+    assert not list((tmp_path / '.bench').glob('.adcp-upgrade-*'))
