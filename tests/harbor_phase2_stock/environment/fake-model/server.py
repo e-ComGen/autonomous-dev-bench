@@ -20,21 +20,16 @@ class State:
         self.requests = 0
         self.tool_call_requests = 0
         self.tool_result_requests = 0
+        self.auxiliary_requests = 0
         self.advertised_tools: set[str] = set()
 
-    def record(self, body: dict[str, object], tool_call: bool, tool_result: bool) -> None:
+    def record(self, body: dict[str, object], *, kind: str) -> None:
         with self.lock:
             self.requests += 1
-            self.tool_call_requests += int(tool_call)
-            self.tool_result_requests += int(tool_result)
-            tools = body.get("tools")
-            if isinstance(tools, list):
-                for tool in tools:
-                    if not isinstance(tool, dict):
-                        continue
-                    function = tool.get("function")
-                    if isinstance(function, dict) and isinstance(function.get("name"), str):
-                        self.advertised_tools.add(function["name"])
+            self.tool_call_requests += int(kind == "tool_call")
+            self.tool_result_requests += int(kind == "tool_result")
+            self.auxiliary_requests += int(kind == "auxiliary")
+            self.advertised_tools.update(advertised_tool_names(body))
 
     def payload(self) -> dict[str, object]:
         with self.lock:
@@ -42,6 +37,7 @@ class State:
                 "requests": self.requests,
                 "tool_call_requests": self.tool_call_requests,
                 "tool_result_requests": self.tool_result_requests,
+                "auxiliary_requests": self.auxiliary_requests,
                 "prompt_tokens": self.requests * PROMPT_TOKENS,
                 "completion_tokens": self.requests * COMPLETION_TOKENS,
                 "cache_tokens": 0,
@@ -62,6 +58,28 @@ def message_text(content: object) -> str:
             if isinstance(block, dict) and isinstance(block.get("text"), str)
         )
     return ""
+
+
+def advertised_tool_names(body: dict[str, object]) -> set[str]:
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        return set()
+    names: set[str] = set()
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function")
+        if isinstance(function, dict) and isinstance(function.get("name"), str):
+            names.add(function["name"])
+    return names
+
+
+def user_text(messages: list[object]) -> str:
+    return "\n".join(
+        message_text(message.get("content"))
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "user"
+    )
 
 
 def text_chunks(text: str) -> list[dict[str, object]]:
@@ -135,27 +153,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400, "missing non-system message")
             return
 
-        tool_result = latest.get("role") == "tool"
-        if tool_result:
+        names = advertised_tool_names(body)
+        task_visible = "stock-harness.txt" in user_text(messages)
+        if latest.get("role") == "tool" and task_visible:
             content = message_text(latest.get("content"))
             if "Created file" not in content or EXPECTED_FILE not in content:
                 self.send_error(400, "unexpected write tool result")
                 return
             chunks = text_chunks("STOCK_HARNESS_FAKE_OK")
-            STATE.record(body, tool_call=False, tool_result=True)
-        else:
-            tools = body.get("tools")
-            names = {
-                function["name"]
-                for tool in tools if isinstance(tools, list) and isinstance(tool, dict)
-                for function in [tool.get("function")]
-                if isinstance(function, dict) and isinstance(function.get("name"), str)
-            }
-            if "write" not in names:
-                self.send_error(400, "stock sdk profile advertised no write tool")
-                return
+            STATE.record(body, kind="tool_result")
+        elif task_visible and "write" in names:
             chunks = tool_call_chunks()
-            STATE.record(body, tool_call=True, tool_result=False)
+            STATE.record(body, kind="tool_call")
+        else:
+            # The stock SDK profile may make auxiliary model calls (for example,
+            # session-title generation). They count toward usage but must not be
+            # confused with the coding turn or trigger an extra workspace edit.
+            chunks = text_chunks("phase2-stock-auxiliary")
+            STATE.record(body, kind="auxiliary")
 
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
