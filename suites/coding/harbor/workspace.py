@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import shlex
-from typing import Protocol
+from typing import Iterable, Protocol
 
 
 class ExecResultLike(Protocol):
@@ -29,16 +29,43 @@ class HarborWorkspaceFacade:
             raise RuntimeError(f"Harbor workspace command failed ({result.return_code}): {stderr}")
         return result.stdout or ""
 
-    async def git_diff(self) -> str:
-        """Export tracked and untracked repository changes without mutating the index."""
+    async def untracked_paths(self) -> tuple[str, ...]:
+        """Return the current untracked workspace paths in a deterministic order."""
 
-        tracked = await self.exec_checked("git diff --binary --no-ext-diff --", cwd=self.repository_root)
-        untracked_output = await self.exec_checked(
+        output = await self.exec_checked(
             "git ls-files --others --exclude-standard -z",
             cwd=self.repository_root,
         )
+        return tuple(sorted(item for item in output.split("\0") if item))
+
+    async def require_clean_tracked_baseline(self) -> None:
+        """Reject a task environment whose tracked tree is already modified before the agent runs."""
+
+        result = await self.environment.exec(
+            "git diff --quiet --no-ext-diff --",
+            cwd=self.repository_root,
+        )
+        if result.return_code == 0:
+            return
+        if result.return_code == 1:
+            raise RuntimeError("Harbor workspace tracked baseline is dirty before agent execution")
+        stderr = (result.stderr or "")[-2000:]
+        raise RuntimeError(f"Harbor workspace baseline check failed ({result.return_code}): {stderr}")
+
+    async def git_diff(self, *, baseline_untracked: Iterable[str] = ()) -> str:
+        """Export only changes introduced after the captured task-workspace baseline.
+
+        Tracked files must be clean before agent execution. Task images may legitimately
+        contain generated untracked files, so callers capture them before the agent runs
+        and pass that snapshot here. Those pre-existing paths are excluded from the final
+        patch; newly-created untracked files are still exported without mutating the index.
+        """
+
+        tracked = await self.exec_checked("git diff --binary --no-ext-diff --", cwd=self.repository_root)
+        baseline = set(baseline_untracked)
+        current_untracked = await self.untracked_paths()
         patches = [tracked] if tracked else []
-        for path in (item for item in untracked_output.split("\0") if item):
+        for path in (path for path in current_untracked if path not in baseline):
             result = await self.environment.exec(
                 f"git diff --binary --no-index -- /dev/null {shlex.quote(path)}",
                 cwd=self.repository_root,
