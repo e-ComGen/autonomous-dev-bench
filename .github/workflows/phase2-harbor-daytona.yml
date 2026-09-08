@@ -2,16 +2,12 @@ name: phase2-harbor-daytona
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'migration/daytona_remote_qualification.trigger'
 
 permissions:
   contents: read
 
 jobs:
   remote-provider:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -26,7 +22,7 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: Require Daytona controller credential
+      - name: Require optional Daytona controller credential
         shell: bash
         run: |
           set -euo pipefail
@@ -43,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           HARBOR_COMMIT="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['commit'])")"
-          DAYTONA_VERSION="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['remote_providers']['daytona']['sdk_version'])")"
+          DAYTONA_VERSION="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['optional_remote_providers']['daytona']['sdk_version'])")"
           rm -rf .phase2-harbor
           git init .phase2-harbor
           git -C .phase2-harbor remote add origin https://github.com/harbor-framework/harbor.git
@@ -60,7 +56,7 @@ jobs:
           lock = json.loads(Path('HARBOR.lock.json').read_text(encoding='utf-8'))
           observed_harbor = importlib.metadata.version('harbor')
           observed_daytona = importlib.metadata.version('daytona')
-          expected_daytona = lock['remote_providers']['daytona']['sdk_version']
+          expected_daytona = lock['optional_remote_providers']['daytona']['sdk_version']
           if observed_harbor != lock['version']:
               raise SystemExit(
                   f"Harbor version mismatch: expected {lock['version']}, observed {observed_harbor}"
@@ -70,7 +66,7 @@ jobs:
                   f"Daytona SDK mismatch: expected {expected_daytona}, observed {observed_daytona}"
               )
           print(
-              f"Remote provider pins verified: Harbor {observed_harbor} @ {lock['commit']}; "
+              f"Optional remote provider pins verified: Harbor {observed_harbor} @ {lock['commit']}; "
               f"Daytona SDK {observed_daytona}"
           )
           PY
@@ -81,7 +77,7 @@ jobs:
           set -euo pipefail
           rm -rf artifacts/harbor-phase2/daytona-wheel
           mkdir -p artifacts/harbor-phase2/daytona-wheel
-          DAYTONA_VERSION="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['remote_providers']['daytona']['sdk_version'])")"
+          DAYTONA_VERSION="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['optional_remote_providers']['daytona']['sdk_version'])")"
           python -m pip download --no-deps --only-binary=:all: \
             --dest artifacts/harbor-phase2/daytona-wheel \
             "daytona==${DAYTONA_VERSION}"
@@ -91,7 +87,7 @@ jobs:
           from pathlib import Path
 
           lock = json.loads(Path('HARBOR.lock.json').read_text(encoding='utf-8'))
-          pin = lock['remote_providers']['daytona']
+          pin = lock['optional_remote_providers']['daytona']
           wheel = Path('artifacts/harbor-phase2/daytona-wheel') / pin['wheel']
           if not wheel.is_file():
               raise SystemExit(f"Pinned Daytona wheel was not downloaded: {wheel}")
@@ -103,7 +99,7 @@ jobs:
           print(f"Daytona wheel SHA verified: {observed}")
           PY
 
-      - name: Run no-model Harbor trial in Daytona cloud
+      - name: Run optional no-model Harbor trial in Daytona cloud
         shell: bash
         run: |
           set -euo pipefail
@@ -116,7 +112,7 @@ jobs:
             --trial-name phase2-daytona-remote \
             --trials-dir artifacts/harbor-phase2/daytona
 
-      - name: Validate remote provider identity, Linux execution, patch and secret boundary
+      - name: Validate optional remote provider identity, Linux execution, patch and secret boundary
         run: |
           python tools/verify_harbor_phase2_daytona.py \
             --trials-dir artifacts/harbor-phase2/daytona
