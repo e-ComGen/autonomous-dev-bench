@@ -1,4 +1,4 @@
-"""Exact Git snapshots through existing cache/worktree owners. No source execution."""
+"""Exact pins through the existing cache and worktree owners. Never execute project code."""
 from pathlib import Path
 import subprocess
 from benchmark_core.checkout import SharedGitCache
@@ -7,6 +7,7 @@ from benchmark_core.identity import CommitPin, Sha256Digest
 from .files import capture_files, code_view, scale
 from .changes import partition
 from .policy import REPOSITORY
+from .inventory import validate_inventory
 
 
 def canonical_modes(directory):
@@ -24,24 +25,33 @@ def canonical_modes(directory):
     return result
 
 
-def acquire_task(candidate, root, policy):
+def acquire_task(candidate, root, policy, progress=None):
     name = candidate["repository"]
     if not REPOSITORY.fullmatch(name):
         raise ValueError("INVALID_REPOSITORY")
+    notify = progress or (lambda stage, **details: None)
     cache = SharedGitCache(Path(root) / ".bench/git-cache")
     manager = WorktreeManager(Path(root) / ".bench/worktrees")
     snapshots = []
     for key in ("pre_fix_commit", "reference_commit"):
-        snapshot = cache.ensure("https://github.com/" + name + ".git", str(CommitPin(candidate[key])))
+        def stage(value, **details):
+            notify(key + "." + value, **details)
+        snapshot = cache.ensure("https://github.com/" + name + ".git", str(CommitPin(candidate[key])),
+            tree_validator=lambda entries: validate_inventory(entries, policy, check_code_size=key == "pre_fix_commit"),
+            progress=stage)
+        stage("materialize")
         with manager.disposable(snapshot) as worktree:
+            stage("capture")
             files = capture_files(worktree.path, policy)
             modes = canonical_modes(worktree.path)
             if set(files) != set(modes):
                 raise ValueError("CAPTURE_DIFFERS_FROM_PINNED_GIT_PATHS")
             for relative, record in files.items():
                 record["executable"] = modes[relative]
+            stage("verify_pristine")
             manager.verify_pristine(worktree, expected_source_tree_digest=snapshot.source_tree_digest)
         snapshots.append((snapshot, files))
+    notify("partition_and_source_view")
     (base, before), (fixed, after) = snapshots
     code, tests = partition(before, after)
     projection = code_view(before, policy.max_code_bytes)
