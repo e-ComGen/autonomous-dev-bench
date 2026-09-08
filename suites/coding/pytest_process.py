@@ -15,7 +15,13 @@ def main():
     allowed = {"PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SYSTEMROOT", "WINDIR", "COMSPEC",
                "PATHEXT", "PYTHONPATH", "PYTHONUTF8", "APPDATA", "LOCALAPPDATA"}
     environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    environment.update(PYTHONDONTWRITEBYTECODE="1", PYTHONHASHSEED="0", PYTEST_ADDOPTS="")
+    # A fixed test identity, not the operator's identity or global git configuration.
+    # This standalone worker has the same values under native and Docker execution.
+    environment.update(PYTHONDONTWRITEBYTECODE="1", PYTHONHASHSEED="0", PYTEST_ADDOPTS="",
+        LOGNAME="autobenchmark", USER="autobenchmark", LNAME="autobenchmark", USERNAME="autobenchmark",
+        GIT_AUTHOR_NAME="autobenchmark", GIT_AUTHOR_EMAIL="autobenchmark@invalid",
+        GIT_COMMITTER_NAME="autobenchmark", GIT_COMMITTER_EMAIL="autobenchmark@invalid",
+        GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0")
     python = os.environ.get("AUTOBENCH_PROJECT_PYTHON", "/opt/project/bin/python")
     result = subprocess.run([python, "-B", "-m", "pytest", "-q", "--tb=short", "-o", "addopts=",
                              "-o", "cache_dir=" + str(scratch / "pytest-cache"), "--junitxml=" + str(outputs / "tests.xml"),

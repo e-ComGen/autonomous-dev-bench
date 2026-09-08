@@ -1,9 +1,11 @@
 """Bounded Python/pytest recipes derived only from the pre-fix repository."""
-from pathlib import PurePosixPath
+from pathlib import Path
 import configparser
 import json
 import tomllib
-from .files import text, is_test
+from .files import text, is_pytest_module
+from .recipe_dependencies import TEST_GROUPS, REQUIREMENT_FILES, dependency_groups
+from .tox_declarations import local_test_projects
 
 
 def infer_recipe(files):
@@ -16,15 +18,15 @@ def infer_recipe(files):
         parser.read_string(text(files["setup.cfg"]))
         if parser.has_section("options.extras_require"):
             extras = dict(parser["options.extras_require"])
-    chosen = next((name for name in ("test", "tests", "testing", "dev") if name in extras), None)
-    install = ".[" + chosen + "]" if chosen else "."
-    requirements = tuple(name for name in ("requirements-test.txt", "requirements-tests.txt", "requirements/testing.txt",
-                                           "requirements/tests.txt", "requirements/test.txt", "requirements-dev.txt") if name in files)
-    test_files = sorted(path for path in files if is_test(path) and (PurePosixPath(path).name.startswith("test_")
-                                    or PurePosixPath(path).name.endswith("_test.py")))
+    chosen = next((name for name in TEST_GROUPS if name in extras), None)
+    group, dependencies = dependency_groups(configuration)
+    test_files = sorted(path for path in files if is_pytest_module(path))
     if not test_files:
         raise ValueError("PYTEST_TEST_FILES_MISSING")
-    return {"version": "python-pytest-recipe/2", "install": install, "requirements": list(requirements[:2]),
+    return {"version": "python-pytest-recipe/3", "install": ".[" + chosen + "]" if chosen else ".",
+            "requirements": [name for name in REQUIREMENT_FILES if name in files],
+            "dependency_group": group, "test_dependencies": dependencies,
+            "local_projects": local_test_projects(files), "metadata_extras": "installed-root/v1",
             "public_candidates": test_files, "environment": {"SETUPTOOLS_SCM_PRETEND_VERSION": "0.0.0"}}
 
 
@@ -52,16 +54,21 @@ def build_project_image(docker, task, policy, deadline):
     directory = docker.scratch / ("build-" + identity[-12:])
     directory.mkdir()
     materialize(directory / "source", task["base_files"])
-    installer = '''import json, subprocess\nfrom pathlib import Path\nconfig = json.loads(Path('/recipe.json').read_text())\npython = '/opt/project/bin/python'\nsubprocess.run([python, '-m', 'pip', 'install', 'pytest==8.4.2', 'setuptools', 'wheel'], check=True)\nfor path in config['requirements']:\n    subprocess.run([python, '-m', 'pip', 'install', '-r', path], check=True)\nsubprocess.run([python, '-m', 'pip', 'install', '-e', config['install']], check=True)\n'''
+    installer = '''import json, subprocess\nfrom pathlib import Path\nconfig = json.loads(Path('/recipe.json').read_text())\npython = '/opt/project/bin/python'\nsubprocess.run([python, '-m', 'pip', 'install', 'pytest==8.4.2', 'setuptools', 'wheel'], check=True)\nargs = list(config['test_dependencies'])\nfor path in config['requirements']:\n    args.extend(['-r', path])\nsubprocess.run([python, '-m', 'pip', 'install', '-e', config['install'], *args], check=True)\nextra = json.loads(subprocess.check_output([python, '-I', '/installed_extras.py', '/workspace']))\ninstall = '.[' + extra + ']' if extra and config['install'] == '.' else config['install']\nlocal = [part for path in config['local_projects'] for part in ('-e', './' + path)]\nif install != config['install'] or local:\n    subprocess.run([python, '-m', 'pip', 'install', '-e', install, *args, *local], check=True)\nsubprocess.run([python, '-m', 'pip', 'check'], check=True)\n'''
     (directory / "install.py").write_text(installer, encoding="utf-8")
+    (directory / "installed_extras.py").write_bytes(Path(__file__).with_name("installed_extras.py").read_bytes())
     (directory / "recipe.json").write_text(json.dumps(recipe), encoding="utf-8")
+    roots = ["/workspace/src", "/workspace"]
+    for path in recipe["local_projects"]:
+        roots.extend(["/workspace/" + path + "/src", "/workspace/" + path])
     (directory / "Dockerfile").write_text(
         f"FROM {base_tag}\nUSER root\nRUN /usr/local/bin/python -m venv /opt/project\n"
         "COPY source/ /workspace/\nCOPY recipe.json /recipe.json\nCOPY install.py /install.py\n"
+        "COPY installed_extras.py /installed_extras.py\n"
         "WORKDIR /workspace\nENV SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0\n"
         "RUN /usr/local/bin/python /install.py && /opt/project/bin/python -m pip freeze --all > /opt/project-freeze.txt\n"
-        "RUN rm -rf /workspace /recipe.json /install.py && mkdir /workspace\n"
-        "ENV PATH=/opt/project/bin:$PATH PYTHONPATH=/workspace/src:/workspace\n"
+        "RUN rm -rf /workspace /recipe.json /install.py /installed_extras.py && mkdir /workspace\n"
+        'ENV PATH=/opt/project/bin:$PATH PYTHONPATH="' + ":".join(roots) + '"\n'
         "ENTRYPOINT [\"/usr/local/bin/python\"]\n", encoding="utf-8")
     seconds = min(policy.build_seconds, deadline - time.monotonic())
     if seconds <= 0:

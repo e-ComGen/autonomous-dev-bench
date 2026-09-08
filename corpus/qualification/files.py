@@ -25,6 +25,12 @@ def is_test(path):
     return bool({"tests", "test", "testing"} & set(value.parts)) or value.name.startswith("test_") or value.name.endswith("_test.py")
 
 
+def is_pytest_module(path):
+    """A protected test asset is not necessarily an executable pytest target."""
+    value = PurePosixPath(path)
+    return value.suffix == ".py" and (value.name.startswith("test_") or value.name.endswith("_test.py"))
+
+
 def is_code(path):
     value = PurePosixPath(path)
     return (value.suffix == ".py" and not is_test(path) and value.name not in {"setup.py", "conftest.py"}

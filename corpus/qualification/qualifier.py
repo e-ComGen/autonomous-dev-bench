@@ -4,7 +4,7 @@ import json
 import random
 import time
 from benchmark_core.identity import Sha256Digest
-from .files import text
+from .files import text, is_pytest_module
 from .junit import acceptance_sets
 from .recipes import build_project_image
 from .evaluator import PytestEvaluator
@@ -18,6 +18,10 @@ class IssueTask:
 
 
 def qualify(root, docker, captured, policy, settings, seed, deadline):
+    # Keep every protected test asset in the overlay, but execute Python test modules only.
+    hidden = {"kind": "acceptance", "paths": sorted(path for path in captured["test_overlay"] if is_pytest_module(path))}
+    if not hidden["paths"]:
+        raise ValueError("ACCEPTANCE_TEST_MODULES_MISSING")
     image, recipe = build_project_image(docker, captured, policy, deadline)
     candidate = captured["candidate"]
     issue = candidate["issues"][0]
@@ -28,21 +32,29 @@ def qualify(root, docker, captured, policy, settings, seed, deadline):
     paths = list(recipe["public_candidates"])
     random.Random(seed).shuffle(paths)
     public = {"kind": "public", "paths": sorted(paths[:policy.public_test_files])}
-    hidden = {"kind": "acceptance", "paths": sorted(captured["test_overlay"])}
     evaluator = PytestEvaluator(docker, root, docker.scratch / issue_task.task_id, captured, image, settings.check_seconds)
     evaluator.deadline = deadline
     baseline = captured["projection"]
     fixed = {**baseline, **{path: text(value) for path, value in captured["fix_code"].items()}}
     samples = []
-    for _ in range(policy.qualification_repeats):
-        samples.append((evaluator.observe(baseline, public), evaluator.observe(baseline, hidden),
-                        evaluator.observe(fixed, hidden), evaluator.observe(fixed, public)))
+    for repetition in range(policy.qualification_repeats):
+        print(f"Qualification: baseline public tests; repetition={repetition + 1}/{policy.qualification_repeats}", flush=True)
+        public_results = evaluator.observe(baseline, public)
+        if samples and public_results != samples[0][0]:
+            raise ValueError("FLAKY_QUALIFICATION")
+        if not public_results or any(value != "PASS" for value in public_results.values()):
+            raise ValueError("PUBLIC_BASELINE_NOT_GREEN")
+        print("Qualification: reproduce issue and verify reference", flush=True)
+        broken_results = evaluator.observe(baseline, hidden)
+        fixed_results = evaluator.observe(fixed, hidden)
+        sets = acceptance_sets(public_results, broken_results, fixed_results)
+        fixed_public = evaluator.observe(fixed, public)
+        if public_results != fixed_public:
+            raise ValueError("REFERENCE_REGRESSION")
+        samples.append((public_results, broken_results, fixed_results, fixed_public))
     if any(sample != samples[0] for sample in samples[1:]):
         raise ValueError("FLAKY_QUALIFICATION")
     public_results, broken_results, fixed_results, fixed_public = samples[0]
-    if public_results != fixed_public:
-        raise ValueError("REFERENCE_REGRESSION")
-    sets = acceptance_sets(public_results, broken_results, fixed_results)
     full_check = {"kind": "acceptance", "paths": sorted(set(hidden["paths"]) | set(public["paths"]))}
     all_fixed = evaluator.observe(fixed, full_check)
     if not all(value == "PASS" for value in all_fixed.values()):

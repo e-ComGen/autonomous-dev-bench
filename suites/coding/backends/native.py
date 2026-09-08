@@ -44,13 +44,14 @@ class NativeRuntime:
         deadline = time.monotonic() + timeout
         environment_root = self.scratch / ("env-" + uuid4().hex[:10])
         project_python = self.environments.execution_python(self.image, environment_root, deadline)
-        environment = private_environment(directory / "process-home", project_python, workspace)
+        _, metadata = self.environments.load(self.image)
+        local_projects = metadata.get("recipe", {}).get("local_projects", [])
+        environment = private_environment(directory / "process-home", project_python, workspace, local_projects)
         environment.update(AUTOBENCH_WORKSPACE=str(workspace), AUTOBENCH_RESULTS=str(results),
             AUTOBENCH_INPUT=str(Path(input_path).resolve()) if input_path else "",
             AUTOBENCH_PROJECT_PYTHON=str(project_python), AUTOBENCH_SCRATCH=str(directory / "process-home/tmp"))
         if "/driver/native_driver.py" in entrypoint:
-            # The composition root requires explicit local-execution consent first.
-            # Do not pretend that an unavailable native sandbox confines these tools.
+            # Native tools require explicit consent; a venv is not a filesystem sandbox.
             environment.update(DSH_PERMISSION_MODE="danger-full-access", DSH_TELEMETRY_DISABLED="1")
         scripts = {"/driver/native_driver.py": self.root / "suites/coding/native_driver.py",
                    "/evaluator/pytest_process.py": Path(evaluator) / "pytest_process.py" if evaluator else None,
