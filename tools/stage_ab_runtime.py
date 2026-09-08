@@ -1,4 +1,4 @@
-"""Atomically stage exact private ADCP bytes; no half-installed runtime on interruption."""
+"""Atomically stage exact private ADCP bytes and the fixtures needed to verify them."""
 from pathlib import Path
 import argparse
 import hashlib
@@ -12,7 +12,7 @@ import tarfile
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from suites.coding.adcp_loading import ADCP_COMMIT, load_adcp, verify_distribution
+from suites.coding.adcp_loading import ADCP_COMMIT, verify_distribution
 
 
 def stage(source, target):
@@ -34,7 +34,9 @@ def stage(source, target):
                     if not member.isdir():
                         raise ValueError("ADCP distribution does not accept linked source")
                     continue
-                if relative.parts[0] not in {"packages", "docs", "tests"} and member.name != "README.md":
+                # Private tests import the existing examples and shared fixtures. Retain them
+                # under the same private source identity, but never publish them in benchmark releases.
+                if relative.parts[0] == '.github':
                     continue
                 payload = archive.extractfile(member).read()
                 destination = temporary / relative
@@ -42,6 +44,7 @@ def stage(source, target):
                 destination.write_bytes(payload)
                 files[relative.as_posix()] = hashlib.sha256(payload).hexdigest()
         (temporary / "SOURCE.json").write_text(json.dumps({"commit": ADCP_COMMIT, "files": files}, indent=2), encoding="utf-8")
+        verify_distribution(temporary)
         os.rename(temporary, target)
         print(json.dumps({"commit": ADCP_COMMIT, "staged_files": len(files)}))
     finally:
@@ -55,4 +58,3 @@ if __name__ == "__main__":
     parser.add_argument("--target", default=str(ROOT / ".bench/adcp"))
     args = parser.parse_args()
     stage(args.source, Path(args.target))
-    verify_distribution(Path(args.target))

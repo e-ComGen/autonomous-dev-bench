@@ -1,34 +1,34 @@
-# Run first. Do not invent another loop or replace real issue tasks.
+# Execute the shipped path, do not build a substitute benchmark
 
-Windows default: `START.cmd` selects NATIVE execution. No Docker, WSL, admin install or reboot.
-Python 3.12+ and Git are needed. All SDK/project Python dependencies are provisioned locally.
-Native execution needs explicit user consent: downloaded code runs with user-account permissions.
-It is NOT an OS sandbox; no enforced filesystem/network isolation or CPU/RAM ceiling.
-Do not silently grant consent or switch execution backend after a failure.
+Windows: START.cmd. Native execution and paid A/B are the operator-selected defaults.
+Credentials come from .env beside START.cmd. AUTOBENCH_ALLOW_PAID is obsolete and ignored.
+No Docker, WSL, administrator rights or reboot is needed. Python 3.12+ and Git must exist.
+Automation: START.cmd ab --backend native --allow-local-execution --allow-live-model
+Self-test only: START.cmd test --offline (NOT a coding-quality score).
 
-Automation after local-code and model-spend authorization, with keys already in environment:
-`START.cmd ab --backend native --allow-local-execution --allow-live-model`
-No paid prompts: `START.cmd ab-preflight --backend native --allow-local-execution`
-Real issue preparation only: `START.cmd qualify --backend native --allow-local-execution`
-Infrastructure tests: `START.cmd test --offline`
-Linux equivalent: `python tools/prepare_ab.py ...`
-Docker remains explicit: `--backend docker`; auto on Linux selects Docker.
+Read .bench/latest.json and its summary/RESULT.md. Open referenced logs only on failure.
+Do not dump .bench/, vendor/, reference_projects/, all source bundles or full CAS into context.
 
-Read `.bench/latest.json`, then its summary/RESULT.md. Open referenced logs only on failure.
-Never dump .bench/, vendor/, whole issues, bundles or benchmark-info.md into agent context.
-Settings: AB.toml. Defaults select ONE real GitHub issue and BOTH existing execution paths.
-Do not replace DSH with raw model API or the actual ADCP runtime with an emulated role loop.
-B is the exact PR28 runtime, NOT the separate unpushed vNext adapter; report its identity.
-AA/ECACC/BADC remain original. Hidden evaluator feedback never enters model repair.
+Runtime upgrade is automatic: acquire exact private ADCP commit, verify bytes, run its
+actual regression suites plus the benchmark role/FAIL-repair-PASS integration, then activate.
+Old .bench/adcp is retained in adcp-backup-* until the new runtime has passed.
+The one-time qualification has a heartbeat; errors point to .bench/runtime-validation/last-gate.log.
+Do not bypass the gate or silently use an old runtime with the enlarged source allocation.
+Private runtime commit: 285702063815280398b95ba8696566259c8b5b34.
+This is the original AA/ECACC/BADC runtime plus bounded snapshot changes, NOT an unpublished vNext gateway.
 
-Native execution reuses project wheel assets but makes a fresh project venv per invocation.
-Private source acquisition requires a GitHub read token unless ADCP was already provisioned.
-The production relay is localhost-only in native mode; real credentials are not put in child env.
-Native mode cannot prevent other same-user processes reading host files, including test assets.
-No claim of strict secret/test isolation or hostile-code benchmark authority in native mode.
-Request/output/time budgets remain active; cost is unpriced/null, never an invented zero.
+Default issue preparation accepts 16 MiB of editable Python; the explicit ADCP snapshot
+allocation is 32 MiB including public helpers. An unchanged file may be up to 16 MiB,
+within the aggregate source cap. Both arms retain the same full repository and hidden evaluator.
+Project attempts per campaign default to 2 (or tasks_per_project, whichever is larger).
+Override github.preparation_attempts_per_project in AB.toml. This is a declared sampling
+quota, not a cached assertion that other commits in a repository are invalid.
 
-Source: suites/coding/backend.py selects a mechanism; backends/ contains only native execution.
-Existing service.py/issue_campaign.py own A/B; existing corpus/qualification owns task validity.
-Existing ProcessRunner/Git/worktree/CAS owners must be reused. Keep new modules <=220 lines.
-Do not publish private ADCP code to this public repository or CI logs/artifacts.
+Native dependencies prefer wheels but may build sdists at the requested version. The exact
+resulting wheelhouse is frozen for both fresh arm environments. Windows curses is added only
+when an actual pre-fix import requires it. Failed imports/tests must never become PASS or be skipped.
+No new scheduler, model transport, cache service or production fake role is permitted.
+User code is executed under local account permissions, not an OS sandbox. Hard CPU/RAM/dollar
+and total input-token caps are not claimed. API/time/patch limits remain active.
+Report actual evidence separately: host regressions, dependency experiment, private runtime gate,
+real GitHub issue qualification and paid two-arm results. A pass in one does not certify another.

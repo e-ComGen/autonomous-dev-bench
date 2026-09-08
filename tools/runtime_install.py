@@ -1,4 +1,4 @@
-"""Transactional pinned private-runtime upgrade. Existing state is retained until checks pass."""
+"""Transactional pinned private-runtime upgrade; validate before replacing the working copy."""
 from pathlib import Path
 import base64
 import json
@@ -6,6 +6,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 from uuid import uuid4
 from suites.coding.adcp_loading import ADCP_COMMIT, verify_distribution
 
@@ -76,7 +78,28 @@ def validate_runtime(root, distribution, environment, run_checked):
     run_checked([str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check',
                  'install', '--only-binary=:all:', 'pytest-subtests==0.14.2'], root, environment, 120)
     print('Runtime: actual snapshot/role/verification regression gate (no model calls)', flush=True)
-    run_checked([str(python), '-B', str(Path(root) / 'tools/runtime_gate.py'), str(distribution)],
-                root, environment, 900)
+    run_gate(root, distribution, python, environment)
     if not marker.is_file() or json.loads(marker.read_text()).get('identity') != identity:
         raise RuntimeError('ADCP_RUNTIME_QUALIFICATION_MISSING')
+
+
+def run_gate(root, distribution, python, environment):
+    from benchmark_core.execution import ProcessRunner, CommandSpec
+    started, stopped = time.monotonic(), threading.Event()
+    def heartbeat():
+        while not stopped.wait(10):
+            print(f'Runtime: regression gate running; elapsed={int(time.monotonic()-started)}s', flush=True)
+    reporter = threading.Thread(target=heartbeat, daemon=True)
+    reporter.start()
+    try:
+        result = ProcessRunner().run(CommandSpec((str(python), '-B', str(Path(root) / 'tools/runtime_gate.py'),
+            str(distribution)), 900, str(root), environment, inherit_environment=False))
+    finally:
+        stopped.set()
+        reporter.join(timeout=2)
+    directory = Path(root) / '.bench/runtime-validation'
+    directory.mkdir(parents=True, exist_ok=True)
+    log = directory / 'last-gate.log'
+    log.write_text(result.stdout[-65536:] + result.stderr[-65536:], encoding='utf-8')
+    if not result.succeeded:
+        raise RuntimeError('ADCP_RUNTIME_GATE_FAILED: ' + str(log))

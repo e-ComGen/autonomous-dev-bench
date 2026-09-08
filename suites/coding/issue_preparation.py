@@ -1,4 +1,4 @@
-"""Real candidate-to-qualified-task pipeline; preserve reasons instead of a bare quota error."""
+"""Real candidate qualification with explicit sampling budgets and preserved rejection evidence."""
 from dataclasses import asdict
 from pathlib import Path
 import json
@@ -77,16 +77,23 @@ def prepare(root, docker, report, settings, policy, seed):
     intake = AutomaticIntake(reader, policy, seed)
     intake.deadline = deadline
     selection = Selection(policy, settings.tasks)
-    rejected, terminal = [], None
-    print("Discovery: test-aware-v2; metadata prefilter, then unchanged executable qualification", flush=True)
+    rejected, attempts, terminal = [], {}, None
+    # This is an explicit sampling limit, not a claim that every revision of a repository is invalid.
+    per_project_limit = max(policy.tasks_per_project, policy.preparation_attempts_per_project)
+    print(f"Discovery: test-aware-v2; at most {per_project_limit} preparations/project in this run", flush=True)
     try:
         for candidate in intake.candidates():
             if time.monotonic() >= deadline:
                 raise TimeoutError("PREPARATION_BUDGET_EXHAUSTED")
             name = candidate["repository"]
-            print(f"Checking {name}, issue #{candidate['issues'][0]['number']} ...", flush=True)
-            stage = "acquisition"
+            stage = "sampling"
             try:
+                if attempts.get(name, 0) >= per_project_limit:
+                    raise ValueError("PROJECT_PREPARATION_QUOTA: deferred under this run's sampling budget")
+                attempts[name] = attempts.get(name, 0) + 1
+                intake.counts['preparations_started'] = sum(attempts.values())
+                print(f"Checking {name}, issue #{candidate['issues'][0]['number']} ...", flush=True)
+                stage = "acquisition"
                 task = acquire_bounded(root, candidate, policy, min(policy.fetch_seconds, deadline - time.monotonic()), report)
                 if not selection.wants(name, task["classification"]["scale"]):
                     raise ValueError("PROJECT_QUOTA_FILTER")
@@ -97,7 +104,7 @@ def prepare(root, docker, report, settings, policy, seed):
             except (OSError, ValueError, RuntimeError) as error:
                 rejected.append({"repository": name, "pull": candidate["pull_number"],
                                  "stage": stage, "reason": str(error)[:2000]})
-                print("Rejected: " + reason_code(error), flush=True)
+                print(("Deferred: " if stage == "sampling" else "Rejected: ") + reason_code(error), flush=True)
             save_discovery(report, reader, intake, selection, rejected, settings.tasks, "IN_PROGRESS")
             if selection.complete:
                 break
@@ -112,7 +119,7 @@ def prepare(root, docker, report, settings, policy, seed):
         summary = save_discovery(report, reader, intake, selection, rejected, settings.tasks, stop)
         print(f"Discovery: qualified={len(selection.selected)}/{settings.tasks}; "
               f"repositories={intake.counts['repositories_inspected']}; "
-              f"pulls={intake.counts['pulls_inspected']}; downloads={intake.counts['candidates_emitted']}", flush=True)
+              f"pulls={intake.counts['pulls_inspected']}; preparations={sum(attempts.values())}", flush=True)
         if not selection.complete:
             print("Rejection reasons: " + top_reasons(summary), flush=True)
     if not selection.complete:

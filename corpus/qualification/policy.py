@@ -14,6 +14,7 @@ class IssuePolicy:
     pulls_per_repository: int = 30
     max_candidates: int = 40
     tasks_per_project: int = 1
+    preparation_attempts_per_project: int = 2
     min_stars: int = 20
     max_stars: int = 1000000
     since: str = "2022-01-01"
@@ -36,6 +37,7 @@ class IssuePolicy:
     def __post_init__(self):
         bounds = {"repository_pool": (1, 300), "max_repositories": (1, 100), "pulls_per_repository": (1, 100),
                   "max_candidates": (1, 300), "tasks_per_project": (1, 20), "min_stars": (0, 1000000),
+                  "preparation_attempts_per_project": (1, 300),
                   "max_stars": (0, 1000000), "max_api_requests": (1, 2000), "api_seconds": (10, 86400),
                   "max_response_bytes": (1024, 8388608), "prepare_seconds": (30, 86400),
                   "fetch_seconds": (5, 900), "build_seconds": (10, 1800), "qualification_repeats": (2, 5),
