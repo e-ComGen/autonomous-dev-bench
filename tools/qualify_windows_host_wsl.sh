@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 HOST_EVIDENCE="${1:-$ROOT/artifacts/harbor-phase2/windows-host/host.json}"
 ARTIFACT_ROOT="$ROOT/artifacts/harbor-phase2/windows-host"
 TRIALS_DIR="$ARTIFACT_ROOT/trials"
@@ -59,14 +60,13 @@ if [[ ! -x "$VENV/bin/python" ]]; then
   "$PYTHON" -m venv "$VENV"
 fi
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q --upgrade pip
-"$VENV/bin/python" -m pip install --disable-pip-version-check -q -e "$ROOT[dev]"
+"$VENV/bin/python" -m pip install --disable-pip-version-check -q "$ROOT[dev]"
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q -e "$HARBOR_SRC"
 
 OBSERVED_HARBOR="$("$VENV/bin/python" -c 'import importlib.metadata; print(importlib.metadata.version("harbor"))')"
 [[ "$OBSERVED_HARBOR" == "$HARBOR_VERSION" ]] || fail "Harbor version mismatch: expected $HARBOR_VERSION observed $OBSERVED_HARBOR"
 
 rm -rf "$TRIALS_DIR"
-cd "$ROOT"
 "$VENV/bin/harbor" trials start \
   -p tests/harbor_phase2 \
   --agent suites.coding.harbor.probe_agent:HarborSubstrateProbeAgent \
@@ -88,7 +88,7 @@ out_path = Path(sys.argv[3])
 linux_identity = sys.argv[4]
 root = Path.cwd()
 lock = json.loads((root / 'HARBOR.lock.json').read_text(encoding='utf-8'))
-host = json.loads(host_path.read_text(encoding='utf-8'))
+json.loads(host_path.read_text(encoding='utf-8'))
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
