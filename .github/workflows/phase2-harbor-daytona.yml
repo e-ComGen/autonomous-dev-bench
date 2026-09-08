@@ -106,7 +106,7 @@ jobs:
           rm -rf artifacts/harbor-phase2/daytona
           harbor trials start \
             -p tests/harbor_phase2 \
-            --agent suites.coding.harbor.probe_agent:HarborDaytonaRemoteProbeAgent \
+            --agent suites.coding.harbor.daytona_probe_agent:HarborDaytonaRemoteProbeAgent \
             --env daytona \
             --environment-kwarg expose_sandbox_id=true \
             --trial-name phase2-daytona-remote \
