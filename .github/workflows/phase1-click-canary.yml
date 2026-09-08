@@ -1,0 +1,68 @@
+name: phase1-click-canary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/phase1-click-canary.yml'
+      - 'tools/verify_native_issue.py'
+      - 'corpus/qualification/**'
+      - 'suites/coding/**'
+      - 'packages/benchmark_core/**'
+
+permissions:
+  contents: read
+
+jobs:
+  click-migration-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install benchmark package
+        run: python -m pip install -e '.[dev]' pytest==8.4.2
+      - name: Re-run existing Click historical qualification canary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/verify_native_issue.py
+      - name: Assert frozen Click migration identity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('artifacts/native-issue.json').read_text(encoding='utf-8'))
+          expected = {
+              'status': 'TASKS_QUALIFIED',
+              'repository': 'pallets/click',
+              'issue': 2813,
+              'pull': 2816,
+              'base': '1c68e531ef5e45f6facdb777c720d0f984614b81',
+              'fix': '4f936ac1981645488f396953bc59e50445de00b6',
+              'fail_to_pass': 1,
+              'pass_to_pass': 143,
+              'replay_checked': True,
+              'empty_patch': 'FAIL',
+              'reference_patch': 'PASS',
+              'paid_model_called': False,
+          }
+          mismatches = {key: {'expected': value, 'observed': payload.get(key)}
+                        for key, value in expected.items() if payload.get(key) != value}
+          if mismatches:
+              raise SystemExit(f'Click migration canary mismatch: {mismatches}')
+          print('Click migration canary: PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase1-click-canary-${{ github.run_id }}
+          path: |
+            artifacts/native-issue.json
+            artifacts/issue-process-*.log
+          if-no-files-found: warn
+          retention-days: 14
