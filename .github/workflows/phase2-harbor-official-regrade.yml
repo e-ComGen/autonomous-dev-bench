@@ -81,35 +81,30 @@ jobs:
           test "$(git -C .phase2-tasks rev-parse HEAD)" = "${TASK_REPO_COMMIT}"
       - name: Build the pinned official task image once
         run: swebench images build .phase2-tasks -i "${INSTANCE_ID}" -j 1
-      - name: Wrap the exact local official image as a Harbor task environment
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          from swebench.task.repo import load_task_repo
-
-          instance_id = os.environ['INSTANCE_ID']
-          instance = load_task_repo('.phase2-tasks', [instance_id])[0]
-          image = instance['image']
-          environment = Path('tests/harbor_phase2_official_regrade/environment')
-          environment.mkdir(parents=True, exist_ok=True)
-          (environment / 'Dockerfile').write_text(f'FROM {image}\nWORKDIR /testbed\n', encoding='utf-8')
-          print(f'Harbor wrapper uses official local image: {image}')
-          PY
-      - name: Capture official image identity before Harbor lifecycle cleanup
+      - name: Resolve exact local official image and wrap it for Harbor
         shell: bash
         run: |
           set -euo pipefail
-          IMAGE="$(python - <<'PY'
+          LOCAL_IMAGE="$(python - <<'PY'
           import os
-          from swebench.task.repo import load_task_repo
-          print(load_task_repo('.phase2-tasks', [os.environ['INSTANCE_ID']])[0]['image'])
+          from swebench.image_builder.image_spec import make_image_spec
+          from swebench.task.repo import load_dockerfiles, load_task_repo
+
+          instance_id = os.environ['INSTANCE_ID']
+          instance = load_task_repo('.phase2-tasks', [instance_id])[0]
+          dockerfile = load_dockerfiles('.phase2-tasks', [instance_id])[instance_id]
+          print(make_image_spec(instance, dockerfile, namespace=None).name)
           PY
           )"
-          IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
+          IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$LOCAL_IMAGE")"
           case "$IMAGE_ID" in sha256:*) ;; *) echo "non-content-addressed image id: $IMAGE_ID" >&2; exit 1;; esac
+          mkdir -p tests/harbor_phase2_official_regrade/environment artifacts/harbor-phase2
+          printf 'FROM %s\nWORKDIR /testbed\n' "$LOCAL_IMAGE" > tests/harbor_phase2_official_regrade/environment/Dockerfile
           echo "OFFICIAL_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
+          echo "LOCAL_OFFICIAL_IMAGE=$LOCAL_IMAGE" >> "$GITHUB_ENV"
           printf '%s\n' "$IMAGE_ID" > artifacts/harbor-phase2/official-image-id.txt
+          printf '%s\n' "$LOCAL_IMAGE" > artifacts/harbor-phase2/local-official-image.txt
+          echo "Harbor wrapper uses pinned locally built image: $LOCAL_IMAGE ($IMAGE_ID)"
       - name: Run Harbor no-model patch transport trial
         run: |
           rm -rf artifacts/harbor-phase2/official-regrade/harbor
