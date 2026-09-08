@@ -1,10 +1,19 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "repository": "harbor-framework/harbor",
   "version": "0.22.0",
   "commit": "d4509bbd3804f4b408527f476d764dacd988791d",
   "python_requires": ">=3.12",
   "role": "replaceable_execution_orchestration_substrate",
   "grading_authority": "official_swebench_v5",
-  "phase": "PHASE2_SUBSTRATE_QUALIFICATION"
+  "phase": "PHASE2_SUBSTRATE_QUALIFICATION",
+  "remote_providers": {
+    "daytona": {
+      "sdk_version": "0.192.0",
+      "wheel": "daytona-0.192.0-py3-none-any.whl",
+      "wheel_sha256": "411e4acecbb727406e8fc7a0cdee7853d950ee3dd583b5bd2cc4fe0833a24d75",
+      "credential_env": "DAYTONA_API_KEY",
+      "harbor_extra": "daytona"
+    }
+  }
 }
