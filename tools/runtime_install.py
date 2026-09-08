@@ -22,7 +22,22 @@ def ensure_runtime(root, read_token, clean_environment, run_checked):
         raise ValueError("Runtime storage must not be a symlink")
     # Reuse the bootstrap owner: two clicks must not race validation or directory replacement.
     with launcher_lock(state / 'launcher.lock'):
-        _ensure_runtime(root, read_token, clean_environment, run_checked)
+        from cli.oneclick.report import Report
+        report = Report(root, 'runtime-upgrade')
+        status = {'phase': 'RUNTIME_UPGRADE', 'expected_adcp_commit': ADCP_COMMIT,
+                  'live_model_called': False, 'rows': []}
+        report.save({**status, 'status': 'PREPARING'})
+        try:
+            _ensure_runtime(root, read_token, clean_environment, run_checked)
+        except KeyboardInterrupt:
+            report.save({**status, 'status': 'CANCELLED'})
+            raise
+        except Exception as error:
+            # Publish the new startup failure through the existing report owner.
+            # Old discovery reports remain on disk, but are no longer "latest".
+            report.save({**status, 'status': 'BLOCKED', 'reason': str(error)[:1500]})
+            raise
+        report.save({**status, 'status': 'RUNTIME_READY'})
 
 
 def _ensure_runtime(root, read_token, clean_environment, run_checked):
@@ -87,7 +102,7 @@ def validate_runtime(root, distribution, environment, run_checked):
     python = launcher_runtime(False)
     run_checked([str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check',
                  'install', '--only-binary=:all:', 'pytest-subtests==0.14.2'], root, environment, 120)
-    print('Runtime: actual snapshot/role/verification regression gate (no model calls)', flush=True)
+    print('Runtime: gate-v3; small/large repair integration first, then original regressions; no model calls', flush=True)
     run_gate(root, distribution, python, environment)
     if not marker.is_file():
         raise RuntimeError('ADCP_RUNTIME_QUALIFICATION_MISSING')
@@ -115,4 +130,5 @@ def run_gate(root, distribution, python, environment):
     log = directory / 'last-gate.log'
     log.write_text(result.stdout[-65536:] + result.stderr[-65536:], encoding='utf-8')
     if not result.succeeded:
+        print(result.stdout[-12000:] + result.stderr[-4000:], file=sys.stderr, flush=True)
         raise RuntimeError('ADCP_RUNTIME_GATE_FAILED: ' + str(log))

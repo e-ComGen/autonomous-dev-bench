@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import shared_contracts as sc
 from packages import ecacc
 from packages.zone_development import DevelopmentWorkRequest, WriteScope, SessionLimits
+from .public_verifier import PublicChecks
 
 
 def compile_request(session, baseline, registry, settings, paths, objective):
@@ -20,7 +21,7 @@ def compile_request(session, baseline, registry, settings, paths, objective):
                         record_revision=sc.AggregateRevision(value=1), attempt_number=1,
                         status=sc.AttemptStatus.RUNNING, versions=versions, provenance=provenance)
     obligations = tuple(ecacc.Obligation(kind, description, (
-        ecacc.CriterionDefinition(key, description, ecacc.VerifierRef("benchmark.public_checks", "1"), ecacc.EvidenceKind.BEHAVIOR),))
+        ecacc.CriterionDefinition(key, description, PublicChecks.reference, ecacc.EvidenceKind.BEHAVIOR),))
         for kind, key, description in ((ecacc.ObligationKind.ACHIEVEMENT, "achievement", "Pass the supplied public task checks"),
                                         (ecacc.ObligationKind.PRESERVATION, "preservation", "Preserve the supplied public regression checks")))
     intent = ecacc.TaskAcceptanceIntent(session + "-intent", task.logical_task_id, versions.requirement_ledger_revision,

@@ -46,12 +46,15 @@ def main():
     import pytest
     junit = report / (identity + '.xml')
     old = Path.cwd()
+    print('Runtime gate v3: real small/large repair integration first, then original regressions', flush=True)
     try:
         os.chdir(distribution)
         with tempfile.TemporaryDirectory(prefix='adcp-gate-') as temporary:
-            code = pytest.main(['-q', '--import-mode=importlib', '-o', 'addopts=',
-                '--basetemp=' + temporary, '--junitxml=' + str(junit), *suites,
-                str(ROOT / 'tests/coding/test_runtime_upgrade.py')])
+            # Fail promptly on a broken integration; successful activation still
+            # requires every original suite, with no failure/error/skip allowed.
+            code = pytest.main(['-q', '--import-mode=importlib', '--maxfail=1', '-o', 'addopts=',
+                '--basetemp=' + temporary, '--junitxml=' + str(junit),
+                str(ROOT / 'tests/coding/test_runtime_upgrade.py'), *suites])
     finally:
         os.chdir(old)
     if code != 0 or not junit.is_file():

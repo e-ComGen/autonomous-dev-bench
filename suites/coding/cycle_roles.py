@@ -1,6 +1,7 @@
 """Adapters to existing ADCP role ports; there is no loop or model API here."""
 import json
 import shared_contracts as sc
+from packages import ecacc
 from packages.zone_development import (
     Role, RoleIdentity, LocalPlan, RepairRecipe, ChangeProposal, FileEdit, ReviewReport, Finding,
 )
@@ -60,7 +61,9 @@ class Coder:
         if context.review:
             prompt += "\nReview: " + json.dumps(sc.to_wire(context.review))
         if context.evaluation:
-            prompt += "\nPublic deterministic verification: " + json.dumps(sc.to_wire(context.evaluation))[:32000]
+            # CandidateEvaluation belongs to ECACC, not the shared ContractModel
+            # registry. Preserve its canonical artifact encoding and exact binding.
+            prompt += "\nPublic deterministic verification: " + ecacc.canonical_json(context.evaluation)
         _, after = self.driver.invoke(files, prompt)
         changed = sorted(path for path in set(files) | set(after) if files.get(path) != after.get(path))
         if set(changed) - set(context.plan.target_paths):
