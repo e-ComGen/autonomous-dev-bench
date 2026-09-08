@@ -1,0 +1,105 @@
+name: Native qualification completion
+on:
+  push:
+    branches: [fix/native-qualification-completion]
+    paths:
+      - .github/workflows/native-completion.yml
+      - .github/maintenance/**
+      - suites/coding/backends/project.py
+      - suites/coding/backends/platform_dependencies.py
+      - tools/verify_dependency_upgrade.py
+      - tools/runtime_gate.py
+      - tools/runtime_install.py
+      - tests/coding/test_native_completion.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python .github/maintenance/complete_native.py
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -q --junitxml=artifacts/completion-tests.xml
+      - name: Actual source dependency build and Windows curses in both fresh environments
+        run: python tools/verify_dependency_upgrade.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: completion-${{ matrix.os }}
+          path: |
+            artifacts/completion-tests.xml
+            artifacts/dependency-upgrade.json
+          retention-days: 7
+  package:
+    needs: host
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python .github/maintenance/complete_native.py
+      - name: Publish only the actual tested source edits on this isolated branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'Benchmark qualification'
+          git config user.email 'qualification@example.invalid'
+          git add corpus/qualification/policy.py suites/coding/cycle_request.py suites/coding/source.py corpus/qualification/workspace.py tools/stage_ab_runtime.py tools/prepare_ab.py AB.toml
+          git commit -m 'fix: activate tested native source and dependency allocation plumbing'
+          python - <<'PY'
+          import os,base64,subprocess
+          token=os.environ.pop('GH_TOKEN')
+          env=dict(os.environ,GIT_AUTH='AUTHORIZATION: basic '+base64.b64encode(('x-access-token:'+token).encode()).decode())
+          subprocess.run(['git','--config-env=http.https://github.com/.extraheader=GIT_AUTH','push','origin','HEAD:refs/heads/fix/native-qualification-completion'],env=env,check=True,capture_output=True)
+          PY
+      - name: Retain bundled launch dependencies and seed projects
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/e-ComGen/autonomous-dev-bench/actions/artifacts/10036777718/zip > native-base.zip
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: completion-*
+          path: artifacts/acceptance
+      - run: python tools/package_native_completion.py native-base.zip
+      - name: Exercise packaged Windows launcher without .git in a path with spaces
+        run: python tools/verify_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-completion-fix
+          path: artifacts/completion-fix/
+          include-hidden-files: true
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autobench-native-complete
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: completion-packaging-evidence
+          path: artifacts/release-evidence/
+          retention-days: 7

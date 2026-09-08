@@ -1,0 +1,6 @@
+"""Allocation shared by the benchmark view and its pinned ADCP request adapter."""
+MAX_SOURCE_BYTES = 32 * 1024 * 1024
+DEFAULT_CODE_BYTES = 16 * 1024 * 1024
+PUBLIC_PAYLOAD_RESERVE = 64 * 1024
+MAX_CODE_BYTES = MAX_SOURCE_BYTES - PUBLIC_PAYLOAD_RESERVE
+MAX_FILE_BYTES = 16 * 1024 * 1024
