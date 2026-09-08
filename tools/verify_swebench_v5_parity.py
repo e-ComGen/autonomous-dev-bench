@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 from pathlib import Path
 import subprocess
@@ -51,6 +52,40 @@ def assert_no_infrastructure_failure(report: dict[str, object], label: str) -> N
         raise ValueError(f"{label} contains infrastructure/evaluator failures: {nonempty}")
 
 
+def environment_evidence(task_repo: Path, tasks: tuple[str, ...]) -> dict[str, object]:
+    """Record exact task Dockerfiles and the images that official evaluation left locally."""
+
+    from swebench.task.repo import load_task_repo
+
+    instances = load_task_repo(task_repo, list(tasks))
+    if {instance["instance_id"] for instance in instances} != set(tasks):
+        raise ValueError("official task repo did not load the exact parity cohort")
+
+    evidence = {}
+    for instance in instances:
+        instance_id = instance["instance_id"]
+        image = instance.get("image")
+        if not isinstance(image, str) or not image:
+            raise ValueError(f"{instance_id} has no image identity")
+        dockerfile = task_repo / "tasks" / instance_id / "Dockerfile"
+        dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
+        inspected = subprocess.run(
+            ("docker", "image", "inspect", "--format={{.Id}}", image),
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
+        if not inspected.startswith("sha256:") or len(inspected) != 71:
+            raise ValueError(f"{instance_id} image does not have a content-addressed Docker ID")
+        evidence[instance_id] = {
+            "image": image,
+            "image_id": inspected,
+            "dockerfile_sha256": dockerfile_sha256,
+            "base_commit": instance.get("base_commit"),
+        }
+    return evidence
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
@@ -66,17 +101,13 @@ def main() -> int:
     expected_version = str(plan["official_swebench"]["version"])
     task_repo_pin = str(plan["task_repo"]["commit"])
 
-    version_process = subprocess.run(
-        (args.swebench, "--version"),
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    version_text = (version_process.stdout + "\n" + version_process.stderr).strip()
-    actual_version = require_v5(version_text)
+    try:
+        installed_version = package_version("swebench")
+    except PackageNotFoundError as error:
+        raise ValueError("official swebench package is not installed") from error
+    actual_version = require_v5(installed_version)
     if ".".join(str(part) for part in actual_version) != expected_version:
-        raise ValueError(f"expected swebench {expected_version}, observed {actual_version}")
+        raise ValueError(f"expected swebench {expected_version}, observed {installed_version}")
 
     if not args.task_repo.is_dir():
         raise ValueError("task repo path does not exist")
@@ -123,6 +154,7 @@ def main() -> int:
     if report_ids(gold_report, "unresolved_ids") or report_ids(gold_report, "empty_patch_ids"):
         raise ValueError("gold control contains unresolved or empty-patch outcomes")
 
+    images = environment_evidence(args.task_repo.resolve(), tasks)
     evidence = {
         "scope": plan["scope"],
         "status": "PASS",
@@ -132,6 +164,7 @@ def main() -> int:
         "official_swebench_version": expected_version,
         "task_repo_commit": task_repo_pin,
         "plan_sha256": hashlib.sha256(args.plan.read_bytes()).hexdigest(),
+        "environments": images,
         "empty_run": empty_report,
         "gold_run": gold_report,
         "legacy_canary": plan["legacy_canary"],

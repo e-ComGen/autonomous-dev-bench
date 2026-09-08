@@ -77,9 +77,6 @@ class OfficialSwebenchV5:
         if isinstance(self.timeout_seconds, bool) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
 
-    def version_command(self) -> tuple[str, ...]:
-        return (self.executable, "--version")
-
     def gold_command(self, run_id: str, instance_ids: Iterable[str]) -> tuple[str, ...]:
         return self._command(run_id, instance_ids, gold=True, predictions=None)
 
