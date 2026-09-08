@@ -41,11 +41,13 @@ class HarborOfficialRegradeProbeAgent(BaseAgent):
     ) -> None:
         workspace = HarborWorkspaceFacade(environment, self.REPOSITORY_ROOT)
         baseline_commit = await workspace.repository_head()
+        await workspace.require_clean_tracked_baseline()
+        baseline_untracked = await workspace.untracked_paths()
         await workspace.exec_checked(
             f"printf 'harbor official regrade transport probe\\n' > {self.MARKER}",
             cwd=self.REPOSITORY_ROOT,
         )
-        patch = await workspace.git_diff()
+        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
         if self.MARKER not in patch or "+harbor official regrade transport probe" not in patch:
             raise ValueError("Harbor official re-grade probe patch was not exported")
         patch_path = self.logs_dir / "PATCH.diff"
@@ -54,6 +56,8 @@ class HarborOfficialRegradeProbeAgent(BaseAgent):
             "model_called": False,
             "instruction_received": bool(instruction.strip()),
             "baseline_commit": baseline_commit,
+            "baseline_untracked_count": len(baseline_untracked),
+            "baseline_untracked_sha256": hashlib.sha256("\0".join(baseline_untracked).encode("utf-8")).hexdigest(),
             "environment_id": getattr(environment, "environment_id", None),
             "repository_root": self.REPOSITORY_ROOT,
             "marker": self.MARKER,
