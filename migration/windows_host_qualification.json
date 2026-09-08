@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": "PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION",
   "physical_host_os": "windows",
   "controller_boundary": "powershell_to_wsl2",
@@ -7,6 +7,22 @@
   "task_environment_os": "linux_container",
   "native_windows_harbor_claimed": false,
   "official_swebench_semantics_preserved": true,
+  "bootstrap": {
+    "mode": "automatic",
+    "elevates_with_uac": true,
+    "installs_wsl2": true,
+    "qualification_distro": "Ubuntu-24.04",
+    "installs_linux_prerequisites": true,
+    "installs_python_3_12": true,
+    "installs_docker_desktop": true,
+    "docker_install_preference": [
+      "winget: Docker.DockerDesktop",
+      "official Docker Desktop Installer fallback"
+    ],
+    "docker_backend": "wsl-2",
+    "supports_runonce_resume_after_reboot": true,
+    "supports_auto_reboot": true
+  },
   "required": {
     "wsl_version": 2,
     "docker_ostype": "linux",
