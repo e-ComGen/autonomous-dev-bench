@@ -25,30 +25,56 @@ The supported primary path is:
 
 ```text
 Windows physical PC
-  -> PowerShell entrypoint
-  -> WSL2 controller boundary
-  -> Docker Desktop Linux engine
+  -> self-bootstrapping PowerShell entrypoint
+  -> WSL2 / Ubuntu 24.04 controller boundary
+  -> Docker Desktop WSL2 Linux engine
   -> Harbor Docker environment
   -> Linux task container
   -> official SWE-bench-compatible semantics
 ```
 
-This means Linux is a property of the isolated benchmark task container, not a requirement for the physical machine. No cloud provider is required.
+This means Linux is a property of the isolated benchmark task container, not a requirement for a separate physical machine. No cloud provider is required.
 
-The one-command host qualification entrypoint is:
+The host entrypoint is intentionally self-bootstrapping. It does not merely diagnose missing prerequisites. It automatically:
+
+- elevates itself through UAC when first-time Windows feature installation needs administrator rights;
+- installs/updates WSL2;
+- installs `Ubuntu-24.04` as the qualification distro when missing;
+- converts/selects it as WSL2 and initializes it non-interactively;
+- installs `git`, CA certificates, `curl`, Python 3.12, venv and pip inside the distro;
+- installs Docker Desktop automatically when missing;
+- prefers the `Docker.DockerDesktop` winget package when winget exists;
+- falls back to Docker's official x86_64 Windows installer when winget is unavailable;
+- installs Docker Desktop with the WSL2 backend and Linux-container path;
+- starts Docker Desktop and waits for the Linux engine and WSL integration;
+- fetches the exact Harbor source commit into an isolated WSL cache/venv;
+- runs the accepted no-model Harbor substrate trial and validator;
+- emits immutable host/trial evidence under `artifacts/harbor-phase2/windows-host/`.
+
+Normal invocation:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\qualify_windows_host.ps1
 ```
 
-It fails closed unless all of these are true:
+For a fully unattended first-time WSL bootstrap, including an automatic reboot when Windows requires one:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\qualify_windows_host.ps1 -AutoReboot
+```
+
+Before a required reboot the script registers a per-user `RunOnce` continuation. After the next sign-in it launches the same bootstrap again, self-elevates if necessary, and continues rather than asking the user to redo installation steps manually.
+
+The script does not silently install benchmark Python packages into the repository checkout. Harbor and test dependencies live under the WSL user cache/venv, while the checkout is referenced through `PYTHONPATH`.
+
+The completed gate still fails closed unless all of these are true:
 
 - physical host is Windows;
-- the selected/default WSL distribution is WSL2;
+- selected qualification distro is WSL2;
 - Docker Desktop is reachable from Windows;
 - Docker reports `OSType=linux`;
 - a real Linux container executes successfully;
-- Docker is reachable inside WSL2;
+- Docker is reachable inside the selected WSL2 distro;
 - Python >=3.12 is available inside WSL2;
 - exact Harbor version and source commit match `HARBOR.lock.json`;
 - the accepted no-model Harbor substrate trial passes through Docker;
