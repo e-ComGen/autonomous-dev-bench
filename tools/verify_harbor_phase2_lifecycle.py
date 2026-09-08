@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -28,6 +29,14 @@ def full_reward(result: dict[str, object], label: str) -> None:
         raise ValueError(f"{label} verifier did not return full reward: {rewards!r}")
 
 
+def reward_values(result: dict[str, object]) -> list[float]:
+    verifier = result.get("verifier_result")
+    rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
+    if not isinstance(rewards, dict):
+        return []
+    return [float(value) for value in rewards.values()]
+
+
 def require_zero_model_usage(result: dict[str, object], label: str) -> None:
     context = result.get("agent_result")
     if not isinstance(context, dict):
@@ -43,6 +52,16 @@ def require_zero_model_usage(result: dict[str, object], label: str) -> None:
             raise ValueError(f"{label} {key} mismatch: {context.get(key)!r}")
 
 
+def duration_seconds(timing: object, label: str) -> float:
+    if not isinstance(timing, dict):
+        raise ValueError(f"{label} timing is missing")
+    started = timing.get("started_at")
+    finished = timing.get("finished_at")
+    if not isinstance(started, str) or not isinstance(finished, str):
+        raise ValueError(f"{label} timing is incomplete")
+    return (datetime.fromisoformat(finished.replace("Z", "+00:00")) - datetime.fromisoformat(started.replace("Z", "+00:00"))).total_seconds()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timeout-dir", type=Path, required=True)
@@ -56,8 +75,12 @@ def main() -> int:
     timeout_exception = timeout_result.get("exception_info")
     if not isinstance(timeout_exception, dict) or timeout_exception.get("exception_type") != "AgentTimeoutError":
         raise ValueError(f"timeout trial did not fail with AgentTimeoutError: {timeout_exception!r}")
-    if timeout_result.get("verifier_result") is not None:
-        raise ValueError("timeout trial unexpectedly reached final verification")
+    timeout_seconds = duration_seconds(timeout_result.get("agent_execution"), "timeout agent execution")
+    if not 0.5 <= timeout_seconds <= 3.0:
+        raise ValueError(f"1-second Harbor agent timeout was not bounded as expected: {timeout_seconds:.3f}s")
+    recovery_rewards = reward_values(timeout_result)
+    if recovery_rewards and max(recovery_rewards) >= 1.0:
+        raise ValueError(f"timed-out trial received a full verifier reward: {recovery_rewards!r}")
 
     network_result = load_json(args.network_dir, "result.json")
     if network_result.get("exception_info") is not None:
@@ -98,6 +121,8 @@ def main() -> int:
         "timeout": {
             "exception_type": timeout_exception["exception_type"],
             "exception_message": timeout_exception.get("exception_message"),
+            "agent_execution_seconds": round(timeout_seconds, 6),
+            "recovery_verifier_rewards": recovery_rewards,
         },
         "network": network_probe,
         "resources": resource_probe,
