@@ -2,16 +2,6 @@ name: phase2-harbor-official-regrade
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/phase2-harbor-official-regrade.yml'
-      - 'HARBOR.lock.json'
-      - 'migration/swebench_v5_verified_parity.json'
-      - 'packages/benchmark_core/benchmark_core/swebench_v5.py'
-      - 'suites/coding/harbor/workspace.py'
-      - 'suites/coding/harbor/official_regrade_agent.py'
-      - 'tests/harbor_phase2_official_regrade/**'
-      - 'tools/verify_harbor_phase2_official_regrade.py'
 
 permissions:
   contents: read
