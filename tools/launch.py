@@ -72,6 +72,9 @@ def ensure_runtime(offline):
 
 
 def command_name(arguments):
+    # Help does not need application credentials, including `ab --help`.
+    if "--help" in arguments or "-h" in arguments:
+        return "help"
     return arguments[0] if arguments and not arguments[0].startswith("-") else "ab"
 
 

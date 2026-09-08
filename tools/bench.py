@@ -7,10 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
 
 if __name__ == "__main__":
-    from tools.launcher_env import clean_environment
+    from tools.launch import command_name, host_environment
     from cli.oneclick.main import main
 
-    environment = clean_environment(ROOT, github="discover" in sys.argv[1:2])
+    # Reuse the command-scoped host policy; worker environments remain separate.
+    command = command_name(sys.argv[1:])
+    environment = host_environment(ROOT, command)
     os.environ.clear()
     os.environ.update(environment)
     raise SystemExit(main(ROOT))
