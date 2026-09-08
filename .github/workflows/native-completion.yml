@@ -23,6 +23,8 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e '.[dev]' pytest==8.4.2 pytest-subtests==0.14.2
       - run: python -m pytest -q --junitxml=artifacts/completion-tests.xml
+      - name: Exact old settings must reproduce backend rejection; new parser must preserve all budgets
+        run: python tools/verify_settings_regression.py
       - name: Exact old collection must reproduce the operator import error; new phases must pass
         run: python tools/verify_gate_process_regression.py
       - name: Exact old adapters must fail the same regression that new adapters pass
@@ -38,6 +40,7 @@ jobs:
             artifacts/dependency-upgrade.json
             artifacts/gate-adapter-*
             artifacts/gate-process-regression.json
+            artifacts/settings-*
           retention-days: 7
   package:
     needs: host

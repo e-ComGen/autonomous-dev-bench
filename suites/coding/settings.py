@@ -1,6 +1,7 @@
 """Immutable per-arm settings; execution mechanism is separate from task/control ownership."""
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
+import argparse
 import tomllib
 from corpus.qualification.policy import policy_from_mapping
 
@@ -35,7 +36,7 @@ class Settings:
             raise ValueError("Unsupported explicitly selected official DSH model")
         if self.task_source not in {"github_issue", "reconstruction"}:
             raise ValueError("Unknown task_source")
-        if self.execution_backend not in {"auto", "native", "docker"}:
+        if not isinstance(self.execution_backend, str) or self.execution_backend not in {"auto", "native", "docker"}:
             raise ValueError("Unknown execution_backend")
         if not self.projects or len(self.projects) != len(set(self.projects)):
             raise ValueError("projects must be nonempty and unique")
@@ -43,8 +44,22 @@ class Settings:
             raise ValueError("Unknown reconstruction seed project")
 
 
+def _canonical_backend(data):
+    """Read the legacy spelling without rewriting operator files or weakening unknown-key checks."""
+    values = dict(data)
+    if "backend" not in values:
+        return values
+    legacy = values.pop("backend")
+    if not isinstance(legacy, str) or legacy not in {"auto", "native", "docker"}:
+        raise ValueError("backend must be one of: auto, native, docker")
+    if "execution_backend" in values and values["execution_backend"] != legacy:
+        raise ValueError("Conflicting A/B settings: backend and execution_backend must agree")
+    values["execution_backend"] = legacy
+    return values
+
+
 def load_campaign(path):
-    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    data = _canonical_backend(tomllib.loads(Path(path).read_text(encoding="utf-8")))
     policy = policy_from_mapping(data.pop("github", {}))
     unknown = set(data) - {field.name for field in fields(Settings)}
     if unknown:
@@ -61,3 +76,19 @@ def load_campaign(path):
 
 def load_settings(path: Path) -> Settings:
     return load_campaign(path)[0]
+
+
+def load_launch_settings(root, arguments):
+    """Validate the same campaign before runtime acquisition, resolving paths beside START.cmd."""
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("--ab-config", default="AB.toml")
+    parser.add_argument("--backend", choices=("auto", "native", "docker"))
+    try:
+        options, _ = parser.parse_known_args(arguments)
+    except argparse.ArgumentError as error:
+        raise ValueError("Invalid A/B arguments: " + str(error)) from error
+    path = Path(options.ab_config)
+    if not path.is_absolute():
+        path = Path(root) / path
+    settings = load_settings(path.resolve())
+    return replace(settings, execution_backend=options.backend or settings.execution_backend)

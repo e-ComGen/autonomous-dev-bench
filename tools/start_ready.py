@@ -81,6 +81,10 @@ def main(argv=None, root=ROOT):
             raise ValueError("Real issue acquisition/A-B cannot run offline; test --offline is separate")
         values = read_credentials(root)
         arguments = configured_arguments(root, arguments, values)
+        if command in {"ab", "ab-preflight", "qualify"}:
+            from suites.coding.settings import load_launch_settings
+            load_launch_settings(root, arguments)
+            print("Config: settings-v2; A/B configuration validated before runtime preparation", flush=True)
         with host_credentials(values):
             if command in {"ab", "ab-preflight"}:
                 from tools.prepare_ab import prepare_runtime

@@ -1,7 +1,5 @@
 """Acquire prerequisites for the selected execution backend, then run the same issue A/B."""
-import argparse
 import base64
-from dataclasses import replace
 import getpass
 import os
 from pathlib import Path
@@ -11,19 +9,14 @@ import sys
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "packages/benchmark_core")]
-from suites.coding.settings import load_settings
+from suites.coding.settings import load_launch_settings
 from suites.coding.backend import backend_name
 ADCP_REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
 from suites.coding.adcp_loading import ADCP_COMMIT
 
 
 def selected_backend(arguments):
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--backend", choices=("auto", "native", "docker"))
-    parser.add_argument("--ab-config", default=str(ROOT / "AB.toml"))
-    known, _ = parser.parse_known_args(arguments)
-    settings = load_settings(known.ab_config)
-    return backend_name(replace(settings, execution_backend=known.backend or settings.execution_backend))
+    return backend_name(load_launch_settings(ROOT, arguments))
 
 
 def clean_acquisition_environment():

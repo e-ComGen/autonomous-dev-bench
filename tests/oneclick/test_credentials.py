@@ -20,6 +20,7 @@ def without_real_keys(monkeypatch):
 
 def configured(root):
     (root / ".env").write_text("GITHUB_TOKEN=unit-github\nDEEPSEEK_API_KEY=unit-deepseek\n")
+    (root / "AB.toml").write_text('execution_backend = "native"\n')
     return read_credentials(root)
 
 
