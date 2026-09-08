@@ -73,6 +73,10 @@ def main():
             logs = {str(path.relative_to(runtime.scratch)): path.read_text(encoding='utf-8', errors='replace')[-20000:]
                     for path in runtime.scratch.rglob('process.log')}
             (artifacts / 'qualification-sqlfluff-logs.json').write_text(json.dumps(logs, indent=2), encoding='utf-8')
+            if report['status'] != 'PASS':
+                print('Historical qualification failed: ' + report.get('reason', 'UNKNOWN'), file=sys.stderr)
+                for name, content in list(logs.items())[-4:]:
+                    print('=== ' + name + ' ===\n' + content[-16000:], file=sys.stderr, flush=True)
     print(json.dumps(report, indent=2))
 
 
