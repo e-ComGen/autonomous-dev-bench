@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import base64
+import json
+import time
 import pytest
 from corpus.qualification.policy import IssuePolicy
 from corpus.qualification.inventory import validate_inventory
@@ -66,9 +68,40 @@ def test_candidate_new_file_and_large_change_still_rejected(tmp_path):
         adapter.read_candidate({'core.py': 'x=1\n'}, tmp_path)
 
 
-def test_production_builder_never_substitutes_atomicwrites_version():
-    root = Path(__file__).resolve().parents[2]
-    source = (root / 'suites/coding/backends/project.py').read_text()
-    assert 'atomicwrites==1.4.0' not in source
-    assert '"wheel", "--prefer-binary", "--no-deps"' in source
-    assert '"install", "--prefer-binary", "-r", requirements' in source
+def test_production_builder_never_substitutes_atomicwrites_version(tmp_path):
+    from suites.coding.backends.project import build_native_project
+    calls, stores = [], []
+    class Provision:
+        # Unit boundary only. CI additionally builds the real atomicwrites 1.4.1 sdist.
+        def venv(self, directory, deadline):
+            return directory / 'python'
+        def execute(self, *args, **kwargs):
+            return SimpleNamespace(stdout='null')
+        def pip(self, python, arguments, source, deadline, **kwargs):
+            arguments = tuple(map(str, arguments))
+            calls.append(arguments)
+            if arguments[0] == 'list':
+                return SimpleNamespace(stdout=json.dumps([{'name': 'atomicwrites', 'version': '1.4.1'}]))
+            if arguments[0] == 'wheel':
+                wheelhouse = Path(arguments[arguments.index('--wheel-dir') + 1])
+                wheelhouse.mkdir(exist_ok=True)
+                (wheelhouse / 'unit-boundary.whl').write_bytes(b'unit-only wheel payload')
+            return SimpleNamespace(stdout='')
+    def store(*values):
+        stores.append(values)
+        return 'unit-environment'
+    environments = SimpleNamespace(root=tmp_path, provision=Provision(), sdk_id='unit-sdk', store=store)
+    files = {'pyproject.toml': record('[project]\nname="probe"\nversion="0.1"\n'),
+             'requirements-test.txt': record('atomicwrites==1.4.1\n'), 'tests/test_probe.py': record('')}
+    image, recipe = build_native_project(SimpleNamespace(environments=environments),
+        {'base_files': files, 'base_source_digest': 'unit-source'}, IssuePolicy(), time.monotonic()+30)
+    installs = [args for args in calls if args[0] == 'install' and '-r' in args]
+    assert len(installs) == 1 and '--prefer-binary' in installs[0]
+    assert installs[0][installs[0].index('-r') + 1] == 'requirements-test.txt'
+    assert not any('--only-binary' in part or 'atomicwrites==1.4.0' in part for part in installs[0])
+    directory = stores[0][1]
+    assert (directory / 'source/requirements-test.txt').read_text() == 'atomicwrites==1.4.1\n'
+    assert (directory / 'dependencies.txt').read_text() == 'atomicwrites==1.4.1\n'
+    wheels = [args for args in calls if args[0] == 'wheel' and '-r' in args]
+    assert len(wheels) == 1 and '--no-deps' in wheels[0] and '--prefer-binary' in wheels[0]
+    assert Path(wheels[0][wheels[0].index('-r') + 1]) == directory / 'dependencies.txt'
