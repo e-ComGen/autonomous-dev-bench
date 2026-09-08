@@ -53,6 +53,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trials-dir", type=Path, required=True)
     parser.add_argument("--task-repo", type=Path, required=True)
+    parser.add_argument("--official-image-id", required=True)
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
     parser.add_argument(
         "--work-dir",
@@ -65,6 +66,9 @@ def main() -> int:
         default=ROOT / "artifacts" / "harbor-phase2" / "PHASE2_OFFICIAL_SWEBENCH_REGRADE.json",
     )
     args = parser.parse_args()
+
+    if not args.official_image_id.startswith("sha256:"):
+        raise ValueError("captured official image id must be content-addressed")
 
     plan = load_json(args.plan)
     expected_version = str(plan["official_swebench"]["version"])
@@ -103,14 +107,7 @@ def main() -> int:
     base_commit = instance.get("base_commit")
     if not isinstance(image, str) or not image or not isinstance(base_commit, str) or len(base_commit) != 40:
         raise ValueError("official task lacks image/base provenance")
-    image_id = subprocess.run(
-        ("docker", "image", "inspect", "--format={{.Id}}", image),
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    if not image_id.startswith("sha256:"):
-        raise ValueError(f"official image is not content-addressed locally: {image_id!r}")
+    image_id = args.official_image_id
 
     result_path = unique_file(args.trials_dir, "result.json")
     patch_path = unique_file(args.trials_dir, "PATCH.diff")
