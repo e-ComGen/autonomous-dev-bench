@@ -52,7 +52,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,17 +63,23 @@ jobs:
       - run: python -m pip install -e '.[dev]' pytest==8.4.2
       - name: Real declared async, GitPython, dynamic-extra and plugin environments with source-edit negative control
         run: python tools/verify_recipe_environment.py
-      - name: Actual pinned SQLFluff issue qualification, plugin checks and empty/reference controls
+      - name: SQLFluff plugin/reference regression and retained seeded skip rejection, not full task acceptance
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python tools/verify_sqlfluff_qualification.py
+      - name: Existing automatic real-issue qualification and exact replay, explicit three-repository CI pool
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/verify_native_issue.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: completion-qualification-${{ matrix.os }}
           path: |
             artifacts/recipe-environment*.json
-            artifacts/qualification-sqlfluff*.json
+            artifacts/qualification-sqlfluff*
+            artifacts/native-issue.json
+            artifacts/issue-process-*.log
           retention-days: 7
   package:
     needs: [host, qualification]

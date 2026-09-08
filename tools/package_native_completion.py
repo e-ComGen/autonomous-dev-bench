@@ -35,24 +35,32 @@ def overlay_names(names, changed):
 def qualification_evidence(directory):
     historical = json.loads((directory / 'qualification-sqlfluff.json').read_text(encoding='utf-8'))
     fixture = json.loads((directory / 'recipe-environment.json').read_text(encoding='utf-8'))
-    if (historical['status'] != 'PASS' or historical['model_called'] or historical['empty_patch'] != 'FAIL'
-            or historical['reference_patch'] != 'PASS' or not historical['qualification']['fail_to_pass']
-            or not historical['plugin_checks'] or set(historical['plugin_checks'].values()) != {'PASS'}):
-        raise ValueError('Historical qualification evidence missing')
+    issue = json.loads((directory / 'native-issue.json').read_text(encoding='utf-8'))
+    rejected = historical['full_qualification']
+    if (historical['status'] != 'CHECKED' or historical['task_qualified'] is not False
+            or historical['model_called'] or historical['empty_patch'] != 'FAIL'
+            or historical['reference_patch'] != 'PASS' or not historical['targeted_fail_to_pass']
+            or not historical['plugin_checks'] or set(historical['plugin_checks'].values()) != {'PASS'}
+            or rejected['status'] != 'REJECTED' or not rejected['skipped']
+            or set(rejected['observed'].values()) != {'PASS', 'SKIP'} or rejected['tests_removed']):
+        raise ValueError('Targeted SQLFluff regression or retained rejection evidence missing')
+    if (issue['status'] != 'TASKS_QUALIFIED' or issue['paid_model_called'] or not issue['replay_checked']
+            or issue['fail_to_pass'] < 1 or issue['pass_to_pass'] < 1
+            or issue['empty_patch'] != 'FAIL' or issue['reference_patch'] != 'PASS'):
+        raise ValueError('Existing real issue qualification/replay controls missing')
     if (fixture['status'] != 'PASS' or fixture['model_called'] or fixture['fresh_environments'] != 3
             or fixture['edited_plugin_verdict'] != 'FAIL' or len(fixture['baseline']) != 5
             or set(fixture['baseline'].values()) != {'PASS'} or fixture['baseline'] != fixture['repeated_baseline']):
         raise ValueError('Native recipe environment evidence missing')
-    return {'status': 'PASS', 'repository': historical['candidate']['repository'],
-            'pre_fix_commit': historical['candidate']['pre_fix_commit'],
-            'reference_commit': historical['candidate']['reference_commit'],
-            'acceptance_cases': historical['acceptance_cases'],
-            'fail_to_pass': len(historical['qualification']['fail_to_pass']),
-            'pass_to_pass': len(historical['qualification']['pass_to_pass']),
-            'plugin_checks_passed': len(historical['plugin_checks']),
-            'empty_patch': 'FAIL', 'reference_patch': 'PASS', 'recipe_fixture_checks': 5,
-            'edited_plugin_verdict': 'FAIL', 'fresh_fixture_environments': 3,
-            'model_called': False, 'scope': 'QUALIFICATION_AND_ENVIRONMENT_NOT_PAID_AB'}
+    return {'status': 'CHECKED', 'full_issue_qualification': issue,
+            'sqlfluff': {'scope': historical['scope'], 'task_qualified': False,
+                'targeted_cases': historical['targeted_cases'],
+                'targeted_fail_to_pass': len(historical['targeted_fail_to_pass']),
+                'plugin_checks_passed': len(historical['plugin_checks']),
+                'full_qualification_status': rejected['status'], 'seed': historical['seed'],
+                'public_passed': rejected['passed'], 'public_skipped': len(rejected['skipped'])},
+            'recipe_fixture_checks': 5, 'edited_plugin_verdict': 'FAIL', 'fresh_fixture_environments': 3,
+            'model_called': False, 'scope': 'REAL_QUALIFICATION_AND_ENVIRONMENT_REGRESSIONS_NOT_PAID_AB'}
 
 
 def main():

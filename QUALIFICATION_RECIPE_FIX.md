@@ -12,7 +12,7 @@ fixtures and other overlay data stay in the complete snapshots and retain their 
 A reference with no executable test module is rejected before building, never accepted
 with empty evidence. A failed public baseline now stops immediately; every successful
 qualification still runs the configured repeats and the combined independent control.
-No failed public tests are discarded or replaced to make a task eligible.
+No failed or skipped public tests are discarded or replaced to make a task eligible.
 
 Test dependencies include conventional hyphen/underscore requirement files, the chosen
 PEP 735 test/testing/dev dependency group (including bounded include-group expansion),
@@ -33,15 +33,24 @@ author/committer. They neither read the operator's identity nor change global Gi
 Credential scrubbing remains in place. This is environment hygiene, not OS isolation.
 
 No campaign budget, random repository search, selected model, role cycle, source-size
-policy, file-mode policy or Verification Authority is changed. MusicBox's unreproduced
-issue, actual dependency conflicts and unsupported GPU builds still fail closed.
+policy, file-mode policy or Verification Authority is changed. The test-file population
+is corrected to Python modules, so the same seed need not choose the old erroneous set.
+MusicBox's unreproduced issue, actual conflicts and unsupported GPU builds still fail.
 
-CI separately exercises host regressions, a real local build/test fixture, and pinned
-SQLFluff PR 8411 using the production qualifier/evaluator and the supplied sampling seed.
-The historical control requires a failing empty patch, a passing reference, all repeats
-and the exact plugin test file that previously failed. This is NOT paid A/B, nor a
-hard-coded fallback repository for production discovery. Consult NATIVE_VALIDATION.json
-and validation-native-completion/ for the actual results, not this change description.
+Validation distinguishes three scopes:
+1. Real local build fixture: async, GitPython, dynamic extras and local plugin checks in
+   fresh environments; a modified current plugin must fail the independent evaluator.
+2. Pinned SQLFluff 8411: targeted plugin and reference-fix regression checks in the exact
+   environment built by the real qualifier. Its full seeded task is separately REJECTED
+   because the sampled baseline contains 53 PASS and 49 SKIP. Skips are retained with
+   reasons, not promoted to PASS or silently resampled. This is not full SQLFluff acceptance.
+3. The EXISTING verify_native_issue.py independently performs automatic issue discovery,
+   full executable qualification, exact replay and empty/reference controls using its
+   explicit three-repository CI pool. Production search is not replaced by that pool.
+
+Packaging requires the real evidence for all three scopes. This is NOT paid model A/B;
+no claimed coding-quality superiority or universal qualification follows from these tests.
+Consult NATIVE_VALIDATION.json and validation-native-completion/ for exact observed outcomes.
 
 Apply the coherent overlay beside START.cmd. Preserve .env, AB.toml and .bench.
 Existing valid ADCP qualification remains subject to the original identity checks.
