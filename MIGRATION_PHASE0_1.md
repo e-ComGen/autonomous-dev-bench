@@ -79,9 +79,20 @@ python tools/verify_swebench_v5_parity.py \
   --task-repo /absolute/path/to/pinned/swe-bench-tasks
 ```
 
+The CI entry point is `.github/workflows/swebench-v5-parity.yml`. It independently downloads
+the pinned official wheel, verifies its SHA-256, fetches the exact task-repository commit,
+checks Docker availability and then runs the same tool. Unit CI remains separate from this
+expensive evaluator qualification.
+
 The tool fails closed if the installed SWE-bench version or task-repository commit differs
 from the plan. On success it writes
 `artifacts/swebench-v5-parity/PHASE1_SWEBENCH_V5_PARITY.json`.
+
+Environment evidence always records the pinned task-repository commit, each task's declared
+image name, base commit and Dockerfile SHA-256. A local Docker image content ID is recorded
+when the official harness retains that image after evaluation; its absence after cleanup is
+not itself an evaluator failure. A mandatory provider-resolved image digest belongs to the
+Phase 2 remote-environment qualification, where lifecycle and provider identity are controlled.
 
 This is evaluator qualification only. It makes no model calls and is not an A/B result.
 
