@@ -102,7 +102,7 @@ def validate_runtime(root, distribution, environment, run_checked):
     python = launcher_runtime(False)
     run_checked([str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check',
                  'install', '--only-binary=:all:', 'pytest-subtests==0.14.2'], root, environment, 120)
-    print('Runtime: gate-v3; small/large repair integration first, then original regressions; no model calls', flush=True)
+    print('Runtime: gate-v4; separate integration/regression processes; no model calls', flush=True)
     run_gate(root, distribution, python, environment)
     if not marker.is_file():
         raise RuntimeError('ADCP_RUNTIME_QUALIFICATION_MISSING')

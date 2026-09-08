@@ -1,25 +1,88 @@
-"""One-time local qualification of the actual downloaded private runtime before activation."""
+"""Qualify both real-runtime phases without sharing pytest's import/module cache."""
 from pathlib import Path
 import hashlib
 import json
-import os
 import sys
-import tempfile
+import time
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [str(ROOT), str(ROOT / 'packages/benchmark_core')]
+from tools.runtime_gate_worker import require_inputs
+
+PHASES = ('integration', 'regressions')
+INTEGRATION_CASES = {
+    'test_actual_cycle_large_snapshot_fail_repair_pass[small-repair]',
+    'test_actual_cycle_large_snapshot_fail_repair_pass[large-repair]',
+}
 
 
 def gate_identity(root, distribution):
     root, distribution = Path(root), Path(distribution)
     digest = hashlib.sha256((distribution / 'SOURCE.json').read_bytes())
-    for path in (root / 'tools/runtime_gate.py', root / 'tests/coding/test_runtime_upgrade.py',
-                 root / 'suites/coding/cycle.py', root / 'suites/coding/cycle_roles.py',
-                 root / 'suites/coding/cycle_request.py', root / 'suites/coding/public_verifier.py'):
-        digest.update(path.read_bytes())
+    for relative in ('tools/runtime_gate.py', 'tools/runtime_gate_worker.py',
+                     'tests/coding/test_runtime_upgrade.py', 'suites/coding/cycle.py',
+                     'suites/coding/cycle_roles.py', 'suites/coding/cycle_request.py',
+                     'suites/coding/public_verifier.py'):
+        digest.update(relative.encode() + b'\0')
+        digest.update((root / relative).read_bytes())
     digest.update((sys.version + sys.platform).encode())
     return digest.hexdigest()
+
+
+def checked_report(path, phase):
+    if not path.is_file():
+        raise RuntimeError('ADCP_RUNTIME_GATE_REPORT_MISSING: ' + phase)
+    tree = ET.parse(path)
+    counts = {tag: len(list(tree.iter(tag))) for tag in ('testcase', 'failure', 'error', 'skipped')}
+    minimum = 2 if phase == 'integration' else 50
+    if counts['testcase'] < minimum or counts['failure'] or counts['error'] or counts['skipped']:
+        raise RuntimeError('ADCP_RUNTIME_GATE_INCOMPLETE: ' + phase + '; ' + str(path))
+    if phase == 'integration' and (counts['testcase'] != 2 or
+            {case.get('name') for case in tree.iter('testcase')} != INTEGRATION_CASES):
+        raise RuntimeError('ADCP_RUNTIME_GATE_INTEGRATION_CASES_MISSING')
+    return counts
+
+
+def run_phases(root, distribution, report, identity, *, timeout=840):
+    from benchmark_core.execution import CommandSpec, ProcessRunner
+    from tools.launcher_env import clean_environment
+    root, distribution, report = Path(root).resolve(), Path(distribution).resolve(), Path(report).resolve()
+    require_inputs(root, distribution)
+    report.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    runner, observations = ProcessRunner(), {}
+    try:
+        for phase in PHASES:
+            junit = report / (identity + '.' + phase + '.xml')
+            junit.unlink(missing_ok=True)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError('ADCP_RUNTIME_GATE_DEADLINE: ' + phase)
+            execution = runner.run(CommandSpec((sys.executable, '-I', '-B',
+                str(root / 'tools/runtime_gate_worker.py'), str(distribution), phase, str(junit)),
+                remaining, str(distribution), clean_environment(root), inherit_environment=False))
+            log = report / (identity + '.' + phase + '.log')
+            log.write_text(execution.stdout[-65536:] + execution.stderr[-65536:], encoding='utf-8')
+            print(execution.stdout[-65536:], end='', flush=True)
+            print(execution.stderr[-65536:], end='', file=sys.stderr, flush=True)
+            if not execution.succeeded:
+                raise RuntimeError('ADCP_RUNTIME_GATE_FAILED: ' + phase + '; ' + str(log))
+            counts = checked_report(junit, phase)
+            observations[phase] = {'counts': counts, 'junit': str(junit), 'log': str(log)}
+            print('Runtime gate v4: ' + phase + ' PASS', flush=True)
+    finally:
+        runner.cancel_running()
+    # Keep the existing single-JUnit artifact, retaining every original test case.
+    combined = ET.Element('testsuites')
+    for phase in PHASES:
+        tree = ET.parse(observations[phase]['junit']).getroot()
+        combined.extend(list(tree) if tree.tag == 'testsuites' else [tree])
+    junit = report / (identity + '.xml')
+    ET.ElementTree(combined).write(junit, encoding='utf-8', xml_declaration=True)
+    counts = {tag: sum(item['counts'][tag] for item in observations.values())
+              for tag in ('testcase', 'failure', 'error', 'skipped')}
+    return {'counts': counts, 'phases': observations, 'junit': str(junit)}
 
 
 def main():
@@ -27,45 +90,16 @@ def main():
     distribution = Path(sys.argv[1]).resolve()
     verify_distribution(distribution)
     identity = gate_identity(ROOT, distribution)
-    report = ROOT / '.bench/runtime-validation'
-    report.mkdir(parents=True, exist_ok=True)
-    for name in ('GITHUB_TOKEN', 'GH_TOKEN', 'DEEPSEEK_API_KEY', 'OPENAI_API_KEY'):
-        os.environ.pop(name, None)
-    paths = [distribution, distribution / 'packages/shared_contracts/src', distribution / 'tests',
-             ROOT / 'packages/benchmark_core', ROOT]
-    sys.path[:0] = [str(path) for path in paths]
-    os.environ['PYTHONPATH'] = os.pathsep.join(map(str, paths))
-    os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
-    os.environ['AUTOBENCH_RUNTIME_UNDER_TEST'] = str(distribution)
-    os.environ.pop('PYTEST_DISABLE_PLUGIN_AUTOLOAD', None)
-    suites = ['tests/zone_development', 'tests/architecture_assurance', 'tests/harness_bridge',
-              'tests/ecacc', 'tests/test_badc.py', 'tests/test_adcl.py']
-    for suite in suites:
-        if not (distribution / suite).exists():
-            raise ValueError('Private qualification suite missing: ' + suite)
-    import pytest
-    junit = report / (identity + '.xml')
-    old = Path.cwd()
-    print('Runtime gate v3: real small/large repair integration first, then original regressions', flush=True)
-    try:
-        os.chdir(distribution)
-        with tempfile.TemporaryDirectory(prefix='adcp-gate-') as temporary:
-            # Fail promptly on a broken integration; successful activation still
-            # requires every original suite, with no failure/error/skip allowed.
-            code = pytest.main(['-q', '--import-mode=importlib', '--maxfail=1', '-o', 'addopts=',
-                '--basetemp=' + temporary, '--junitxml=' + str(junit),
-                str(ROOT / 'tests/coding/test_runtime_upgrade.py'), *suites])
-    finally:
-        os.chdir(old)
-    if code != 0 or not junit.is_file():
-        raise RuntimeError('ADCP_RUNTIME_GATE_FAILED: ' + str(junit))
-    tree = ET.parse(junit)
-    counts = {tag: len(list(tree.iter(tag))) for tag in ('testcase', 'failure', 'error', 'skipped')}
-    if counts['testcase'] < 50 or counts['failure'] or counts['error'] or counts['skipped']:
-        raise RuntimeError('ADCP_RUNTIME_GATE_INCOMPLETE: ' + str(junit))
-    value = {'identity': identity, 'status': 'PASS', 'counts': counts, 'model_called': False,
-             'junit': str(junit), 'scope': 'ACTUAL_RUNTIME_REGRESSION_NOT_PAID_AB'}
-    (distribution / 'QUALIFIED.json').write_text(json.dumps(value, indent=2), encoding='utf-8')
+    marker = distribution / 'QUALIFIED.json'
+    marker.unlink(missing_ok=True)
+    print('Runtime gate v4: independent pytest processes; integration completes before regression collection', flush=True)
+    result = run_phases(ROOT, distribution, ROOT / '.bench/runtime-validation', identity)
+    verify_distribution(distribution)
+    if gate_identity(ROOT, distribution) != identity:
+        raise RuntimeError('ADCP_RUNTIME_GATE_SOURCE_CHANGED')
+    value = {'identity': identity, 'status': 'PASS', **result, 'gate_version': 4,
+             'model_called': False, 'scope': 'ACTUAL_RUNTIME_REGRESSION_NOT_PAID_AB'}
+    marker.write_text(json.dumps(value, indent=2), encoding='utf-8')
     print(json.dumps(value))
     return 0
 

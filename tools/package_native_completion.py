@@ -60,7 +60,13 @@ def main():
         dependencies = json.loads((directory / 'dependency-upgrade.json').read_text())
         if dependencies['status'] != 'PASS' or dependencies['fresh_environments'] != 2:
             raise ValueError('Real dependency experiment missing')
-        evidence[os_name] = {'host_tests': counts, 'dependency_build': dependencies}
+        gate = json.loads((directory / 'gate-process-regression.json').read_text())
+        if (gate['old_exit'] == 0 or gate['new_counts'] !=
+                {'testcase': 65, 'failure': 0, 'error': 0, 'skipped': 0}
+                or gate['private_runtime_executed'] or gate['model_called']):
+            raise ValueError('Exact gate import regression evidence missing')
+        evidence[os_name] = {'host_tests': counts, 'dependency_build': dependencies,
+                             'gate_import_regression': gate}
     validation = {'source_commit': source, 'base': BASE, 'evidence': evidence,
                   'private_runtime_ci': 'NOT_CONFIRMED; local gate required before activation',
                   'paid_full_ab_executed': False, 'user_env_overwritten': False}
