@@ -14,7 +14,7 @@ fail() {
 }
 
 command -v git >/dev/null 2>&1 || fail "git is missing inside WSL"
-command -v docker >/dev/null 2>&1 || fail "docker CLI is missing inside WSL; enable Docker Desktop WSL integration"
+command -v docker >/dev/null 2>&1 || fail "docker CLI is missing inside WSL"
 
 PYTHON=""
 for candidate in python3.13 python3.12 python3; do
@@ -23,7 +23,7 @@ for candidate in python3.13 python3.12 python3; do
     break
   fi
 done
-[[ -n "$PYTHON" ]] || fail "Python >=3.12 is required inside WSL"
+[[ -n "$PYTHON" ]] || fail "Python >=3.12 is unavailable inside WSL after bootstrap"
 
 DOCKER_OS="$(docker info --format '{{.OSType}}' 2>/dev/null || true)"
 [[ "$DOCKER_OS" == "linux" ]] || fail "Docker daemon inside WSL must report OSType=linux; observed '$DOCKER_OS'"
@@ -57,14 +57,16 @@ fi
 [[ "$(git -C "$HARBOR_SRC" rev-parse HEAD)" == "$HARBOR_COMMIT" ]] || fail "Harbor source commit mismatch"
 
 if [[ ! -x "$VENV/bin/python" ]]; then
-  "$PYTHON" -m venv "$VENV" || fail "Python venv support is missing inside WSL (install the matching python3.12-venv/python3.13-venv package)"
+  "$PYTHON" -m venv "$VENV" || fail "Python venv support is unavailable after bootstrap"
 fi
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q --upgrade pip
-"$VENV/bin/python" -m pip install --disable-pip-version-check -q "$ROOT[dev]"
+"$VENV/bin/python" -m pip install --disable-pip-version-check -q 'pytest>=8' 'pytest-cov>=5' 'build>=1.2'
 "$VENV/bin/python" -m pip install --disable-pip-version-check -q -e "$HARBOR_SRC"
 
 OBSERVED_HARBOR="$("$VENV/bin/python" -c 'import importlib.metadata; print(importlib.metadata.version("harbor"))')"
 [[ "$OBSERVED_HARBOR" == "$HARBOR_VERSION" ]] || fail "Harbor version mismatch: expected $HARBOR_VERSION observed $OBSERVED_HARBOR"
+
+export PYTHONPATH="$ROOT:$ROOT/packages/benchmark_core${PYTHONPATH:+:$PYTHONPATH}"
 
 rm -rf "$TRIALS_DIR"
 "$VENV/bin/harbor" trials start \
@@ -88,7 +90,7 @@ out_path = Path(sys.argv[3])
 linux_identity = sys.argv[4]
 root = Path.cwd()
 lock = json.loads((root / 'HARBOR.lock.json').read_text(encoding='utf-8'))
-json.loads(host_path.read_text(encoding='utf-8'))
+host = json.loads(host_path.read_text(encoding='utf-8'))
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -108,10 +110,11 @@ def tree_digest(path: Path) -> str:
     return h.hexdigest()
 
 report = {
-    'schema_version': 1,
+    'schema_version': 2,
     'scope': 'PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION',
     'status': 'PASS',
     'physical_host_os': 'windows',
+    'bootstrap_mode': host.get('bootstrap_mode'),
     'controller_boundary': 'powershell_to_wsl2',
     'execution_backend': 'docker_desktop_linux_engine',
     'task_environment_os': 'linux_container',
@@ -122,6 +125,7 @@ report = {
         'commit': lock['commit'],
     },
     'wsl': {
+        'distro': host.get('wsl', {}).get('distro'),
         'python': platform.python_version(),
         'kernel': platform.release(),
     },
