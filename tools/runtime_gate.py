@@ -17,13 +17,34 @@ INTEGRATION_CASES = {
 }
 
 
+def require_host_runner(root=None):
+    """Reject a stale or shadowed host before spending time on private tests."""
+    from benchmark_core import execution
+    source = Path(execution.__file__).resolve()
+    if root is not None:
+        expected = Path(root).resolve() / 'packages/benchmark_core/benchmark_core/execution.py'
+        if source != expected:
+            raise RuntimeError('ADCP_RUNTIME_GATE_HOST_SOURCE_MISMATCH: loaded=' + str(source)
+                               + '; expected=' + str(expected))
+    runner = execution.ProcessRunner()
+    missing = [name for name in ('run', 'cancel_running') if not callable(getattr(runner, name, None))]
+    if missing:
+        raise RuntimeError('ADCP_RUNTIME_GATE_HOST_INCOMPATIBLE: ' + ','.join(missing)
+                           + '; source=' + str(source) + '; reapply the coherent host overlay')
+    return runner
+
+
 def gate_identity(root, distribution):
     root, distribution = Path(root), Path(distribution)
     digest = hashlib.sha256((distribution / 'SOURCE.json').read_bytes())
-    for relative in ('tools/runtime_gate.py', 'tools/runtime_gate_worker.py',
-                     'tests/coding/test_runtime_upgrade.py', 'suites/coding/cycle.py',
-                     'suites/coding/cycle_roles.py', 'suites/coding/cycle_request.py',
-                     'suites/coding/public_verifier.py'):
+    relatives = ['tools/runtime_gate.py', 'tools/runtime_gate_worker.py', 'tools/launcher_env.py',
+                 'tests/coding/test_runtime_upgrade.py', 'suites/coding/cycle.py',
+                 'suites/coding/cycle_roles.py', 'suites/coding/cycle_request.py',
+                 'suites/coding/public_verifier.py']
+    # The host process owner and its dependencies are part of qualification.
+    relatives.extend(path.relative_to(root).as_posix() for path in
+                     sorted((root / 'packages/benchmark_core/benchmark_core').rglob('*.py')))
+    for relative in relatives:
         digest.update(relative.encode() + b'\0')
         digest.update((root / relative).read_bytes())
     digest.update((sys.version + sys.platform).encode())
@@ -45,13 +66,14 @@ def checked_report(path, phase):
 
 
 def run_phases(root, distribution, report, identity, *, timeout=840):
-    from benchmark_core.execution import CommandSpec, ProcessRunner
+    from benchmark_core.execution import CommandSpec
     from tools.launcher_env import clean_environment
     root, distribution, report = Path(root).resolve(), Path(distribution).resolve(), Path(report).resolve()
+    runner = require_host_runner()
     require_inputs(root, distribution)
     report.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
-    runner, observations = ProcessRunner(), {}
+    observations = {}
     try:
         for phase in PHASES:
             junit = report / (identity + '.' + phase + '.xml')
@@ -87,6 +109,8 @@ def run_phases(root, distribution, report, identity, *, timeout=840):
 
 def main():
     from suites.coding.adcp_loading import verify_distribution
+    require_host_runner(ROOT)
+    print('Runtime: host-api-v1; local ProcessRunner run/cancel_running verified', flush=True)
     distribution = Path(sys.argv[1]).resolve()
     verify_distribution(distribution)
     identity = gate_identity(ROOT, distribution)
@@ -98,7 +122,8 @@ def main():
     if gate_identity(ROOT, distribution) != identity:
         raise RuntimeError('ADCP_RUNTIME_GATE_SOURCE_CHANGED')
     value = {'identity': identity, 'status': 'PASS', **result, 'gate_version': 4,
-             'model_called': False, 'scope': 'ACTUAL_RUNTIME_REGRESSION_NOT_PAID_AB'}
+             'host_api_checked': True, 'model_called': False,
+             'scope': 'ACTUAL_RUNTIME_REGRESSION_NOT_PAID_AB'}
     marker.write_text(json.dumps(value, indent=2), encoding='utf-8')
     print(json.dumps(value))
     return 0

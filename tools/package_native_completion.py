@@ -1,4 +1,4 @@
-"""Package actual checked-in tested bytes; preserve operator keys/settings/runtime in overlays."""
+"""Package tested bytes as a coherent host overlay, retaining operator state."""
 from pathlib import Path
 import hashlib
 import json
@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = '49a5f0844a4e2caf577d42b9c56b07bfe6651a4b'
+HOST_ROOTS = {'cli', 'corpus', 'faults', 'mutations', 'oracles', 'packages', 'suites', 'tools', 'tests'}
+PROTECTED = {'AB.toml', 'BENCHMARK.toml', 'benchmark.lock', '.env', '.env.example'}
 
 
 def git(*args):
@@ -19,6 +21,15 @@ def git(*args):
 def allowed(name):
     path = Path(name)
     return not any(part in {'.git', '.github', '__pycache__', '.pytest_cache'} for part in path.parts)
+
+
+def overlay_names(names, changed):
+    """An unchanged core file is still a required dependency, not an optional diff."""
+    selected = set(changed)
+    selected.update(name for name in names if Path(name).parts[0] in HOST_ROOTS
+                    or Path(name).suffix.lower() == '.cmd')
+    return sorted(name for name in set(names) & selected if allowed(name)
+                  and name not in PROTECTED and Path(name).parts[0] not in {'.bench', 'vendor'})
 
 
 def main():
@@ -35,7 +46,6 @@ def main():
             path = Path(member.filename)
             if path.is_absolute() or '..' in path.parts or '\\' in member.filename:
                 raise ValueError('Unsafe base archive member')
-            # Carry dependencies and pinned examples, not obsolete source or runtime validation claims.
             if not member.is_dir() and (member.filename.startswith('vendor/') or member.filename.startswith('.bench/seeds/')):
                 target = stage / path
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -44,18 +54,24 @@ def main():
         target = stage / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(git('show', 'HEAD:' + name))
-    for name in changed:
-        if name in names and name not in {'AB.toml', '.env', '.env.example'}:
-            target = overlay / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(git('show', 'HEAD:' + name))
+    included = overlay_names(names, changed)
+    for name in included:
+        target = overlay / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(stage / name, target)
+    receipt = {'schema': 'autobench.host-overlay/v1', 'source_commit': source,
+               'refreshes_unchanged_host_dependencies': True,
+               'preserves': sorted(PROTECTED | {'.bench/'}),
+               'files': {name: hashlib.sha256((overlay / name).read_bytes()).hexdigest() for name in included}}
+    for directory in (stage, overlay):
+        (directory / 'OVERLAY_SOURCE.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
     evidence = {}
     acceptance = ROOT / 'artifacts/acceptance'
     for os_name in ('ubuntu-latest', 'windows-latest'):
         directory = acceptance / ('completion-' + os_name)
         tree = ET.parse(directory / 'completion-tests.xml')
         counts = {tag: len(list(tree.iter(tag))) for tag in ('testcase', 'failure', 'error', 'skipped')}
-        if counts['failure'] or counts['error'] or counts['testcase'] < 323:
+        if counts['failure'] or counts['error'] or counts['testcase'] < 371:
             raise ValueError('Host suite did not pass')
         dependencies = json.loads((directory / 'dependency-upgrade.json').read_text())
         if dependencies['status'] != 'PASS' or dependencies['fresh_environments'] != 2:
@@ -69,7 +85,8 @@ def main():
                              'gate_import_regression': gate}
     validation = {'source_commit': source, 'base': BASE, 'evidence': evidence,
                   'private_runtime_ci': 'NOT_CONFIRMED; local gate required before activation',
-                  'paid_full_ab_executed': False, 'user_env_overwritten': False}
+                  'paid_full_ab_executed': False, 'user_env_overwritten': False,
+                  'coherent_host_overlay': True, 'overlay_files': len(included)}
     for directory in (stage, overlay):
         (directory / 'NATIVE_VALIDATION.json').write_text(json.dumps(validation, indent=2), encoding='utf-8')
         shutil.copytree(acceptance, directory / 'validation-native-completion')
@@ -78,7 +95,7 @@ def main():
     release = stage / '.bench/release.json'
     release.parent.mkdir(exist_ok=True)
     release.write_text(json.dumps({'source_commit': source, 'files': files}, indent=2), encoding='utf-8')
-    print(json.dumps({'source_commit': source, 'overlay_files': len(changed), 'evidence': evidence}, indent=2))
+    print(json.dumps(validation, indent=2))
 
 
 if __name__ == '__main__':

@@ -61,6 +61,8 @@ jobs:
           pattern: completion-*
           path: artifacts/acceptance
       - run: python tools/package_native_completion.py native-base.zip
+      - name: Apply actual coherent overlay to older install with incompatible ProcessRunner and operator sentinels
+        run: python tools/verify_completion_overlay.py native-base.zip
       - name: Exercise packaged Windows launcher without .git in a path with spaces
         run: python tools/verify_release.py
       - uses: actions/upload-artifact@v4
