@@ -17,6 +17,7 @@
   "model": "deepseek-v4-flash",
   "qualification_reference": {
     "repository": "deepseek-ai/deepseek-harness",
-    "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a"
+    "tag": "dsh-v0.1.2-rc.1",
+    "commit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d"
   }
 }
