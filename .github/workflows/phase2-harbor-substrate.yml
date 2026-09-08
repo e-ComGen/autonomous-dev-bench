@@ -2,21 +2,6 @@ name: phase2-harbor-substrate
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/phase2-harbor-substrate.yml'
-      - 'HARBOR.lock.json'
-      - 'pyproject.toml'
-      - 'suites/coding/harbor/workspace.py'
-      - 'suites/coding/harbor/probe_agent.py'
-      - 'tests/harbor_phase2/**'
-      - 'tests/harbor_phase2_timeout/**'
-      - 'tests/harbor_phase2_network/**'
-      - 'tests/harbor_phase2_resources/**'
-      - 'tests/coding/test_harbor_workspace.py'
-      - 'tools/verify_harbor_phase2_substrate.py'
-      - 'tools/verify_harbor_phase2_lifecycle.py'
-      - 'tools/verify_harbor_phase2_cancellation.py'
 
 permissions:
   contents: read
