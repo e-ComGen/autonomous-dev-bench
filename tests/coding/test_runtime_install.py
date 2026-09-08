@@ -15,7 +15,7 @@ def distribution(path, commit=ADCP_COMMIT):
     for name, content in files.items():
         target = path / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding='utf-8')
+        target.write_bytes(content.encode('utf-8'))
     manifest = {'commit': commit, 'files': {name: hashlib.sha256(value.encode()).hexdigest() for name, value in files.items()}}
     (path / 'SOURCE.json').write_text(json.dumps(manifest), encoding='utf-8')
 
