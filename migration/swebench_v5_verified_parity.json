@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE1_OFFICIAL_SWEBENCH_V5_PARITY_NOT_MODEL_AB",
+  "official_swebench": {
+    "package": "swebench",
+    "version": "5.0.2",
+    "wheel_sha256": "b7f0416a1e686eca22c2f749b5f816685a202835032f6683080e2b53545bbb62"
+  },
+  "task_repo": {
+    "repository": "SWE-bench/swe-bench-tasks",
+    "commit": "3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d"
+  },
+  "dataset": "verified",
+  "tasks": [
+    "astropy__astropy-12907",
+    "django__django-10880",
+    "matplotlib__matplotlib-13989",
+    "pallets__flask-5014",
+    "psf__requests-1142",
+    "pydata__xarray-2905",
+    "pylint-dev__pylint-6528",
+    "pytest-dev__pytest-10081",
+    "scikit-learn__scikit-learn-10297",
+    "sympy__sympy-20590"
+  ],
+  "acceptance": {
+    "empty_patch": "FAIL",
+    "gold_patch": "PASS",
+    "infra_failures_allowed": 0,
+    "ambiguous_failures_allowed": 0,
+    "errors_allowed": 0
+  },
+  "legacy_canary": {
+    "repository": "pallets/click",
+    "issue": 2813,
+    "pull_request": 2816,
+    "base": "1c68e531ef5e45f6facdb777c720d0f984614b81",
+    "reference": "4f936ac1981645488f396953bc59e50445de00b6",
+    "fail_to_pass": 1,
+    "pass_to_pass": 143,
+    "empty_patch": "FAIL",
+    "reference_patch": "PASS"
+  }
+}
