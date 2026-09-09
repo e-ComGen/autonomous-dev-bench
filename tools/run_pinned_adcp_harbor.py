@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import replace
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -77,11 +78,28 @@ def _install_private_import_paths(source_root: Path) -> None:
     sys.path.insert(0, str(shared_contracts))
 
 
-def _prepare_harbor_zone(workspace: Path, temporary: Path):
+def _load_private_harness_support(source_root: Path):
+    """Load the exact pinned TEST-ONLY Harness support without a ``tests`` import collision."""
+    support_path = source_root / "tests" / "harness_bridge" / "support.py"
+    if not support_path.is_file():
+        raise RuntimeError("pinned private checkout is missing tests/harness_bridge/support.py")
+    spec = importlib.util.spec_from_file_location("autobench_pinned_adcp_harness_support", support_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load pinned private Harness support module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _prepare_harbor_zone(workspace: Path, temporary: Path, source_root: Path):
     import shared_contracts as sc
     from examples.zone_development.fixture import BASE, GOOD, NEIGHBOR, ExternalZone, source_ref
     from packages.zone_development import SessionJournal, ZoneDevelopmentRuntime
-    from tests.harness_bridge.support import gateway, runtime, zone_handler
+
+    support = _load_private_harness_support(source_root)
+    gateway = support.gateway
+    runtime = support.runtime
+    zone_handler = support.zone_handler
 
     if ZoneDevelopmentRuntime.__module__ != "packages.zone_development.assured_runtime":
         raise RuntimeError(
@@ -117,7 +135,7 @@ def _prepare_harbor_zone(workspace: Path, temporary: Path):
         raise RuntimeError("from_harness composition bypassed the pinned assured runtime")
 
     outcome = assured.develop(zone.request, workspace)
-    return zone, protocol, outcome, GOOD, NEIGHBOR, sc
+    return zone, protocol, outcome, GOOD, NEIGHBOR, sc, assured.__class__.__module__
 
 
 def _role_name(role_value: str) -> str:
@@ -145,7 +163,11 @@ def main() -> int:
     from packages.zone_development import OutcomeStatus
 
     with tempfile.TemporaryDirectory(prefix="autobench-adcp-private-") as tmp:
-        zone, protocol, outcome, good, neighbor, sc = _prepare_harbor_zone(workspace, Path(tmp))
+        zone, protocol, outcome, good, neighbor, sc, runtime_module = _prepare_harbor_zone(
+            workspace,
+            Path(tmp),
+            source_root,
+        )
 
         if outcome.status is not OutcomeStatus.CANDIDATE_READY:
             raise RuntimeError(f"pinned assured runtime did not reach CANDIDATE_READY: {outcome}")
@@ -237,7 +259,7 @@ def main() -> int:
             "source_repository": source_identity["repository"],
             "source_commit": source_identity["commit"],
             "source_tree": source_identity["tree"],
-            "runtime_module": outcome.__class__.__module__,
+            "runtime_module": runtime_module,
             "harness_calls": len(protocol.calls),
             "ecacc_results": ecacc,
             "badc_actions": badc,
