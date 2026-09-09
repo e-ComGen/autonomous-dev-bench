@@ -27,6 +27,14 @@ from .model_budget import (
     ModelBudgetTicket,
     ModelUsage,
 )
+from .model_gateway import (
+    GatewayUsage,
+    ModelGatewayConfig,
+    ModelGatewayHTTPServer,
+    ModelGatewayPricing,
+    SharedModelGateway,
+    parse_openai_usage,
+)
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
@@ -49,6 +57,7 @@ __all__ = [
     "ExperimentRunner",
     "ExperimentSpec",
     "FrozenDict",
+    "GatewayUsage",
     "HardGate",
     "InvalidExperiment",
     "ModelAccountingError",
@@ -56,6 +65,9 @@ __all__ = [
     "ModelBudgetGateway",
     "ModelBudgetSnapshot",
     "ModelBudgetTicket",
+    "ModelGatewayConfig",
+    "ModelGatewayHTTPServer",
+    "ModelGatewayPricing",
     "ModelManifest",
     "ModelUsage",
     "OfficialSwebenchV5",
@@ -69,6 +81,7 @@ __all__ = [
     "ScenarioCheckpointMaterializer",
     "ScenarioSpec",
     "Sha256Digest",
+    "SharedModelGateway",
     "StageResult",
     "SuitePlan",
     "SuiteResult",
@@ -86,6 +99,7 @@ __all__ = [
     "load_scenario",
     "load_suite",
     "load_task",
+    "parse_openai_usage",
     "require_v5",
     "write_predictions",
 ]
