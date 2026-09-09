@@ -28,7 +28,7 @@ done
 DOCKER_OS="$(docker info --format '{{.OSType}}' 2>/dev/null || true)"
 [[ "$DOCKER_OS" == "linux" ]] || fail "Docker daemon inside WSL must report OSType=linux; observed '$DOCKER_OS'"
 LINUX_IDENTITY="$(docker run --rm --pull=missing alpine:3.20 uname -sm)"
-[[ "$LINUX_IDENTITY" == Linux* ]] || fail "Docker Desktop did not execute a Linux container: '$LINUX_IDENTITY'"
+[[ "$LINUX_IDENTITY" == Linux* ]] || fail "Docker daemon did not execute a Linux container: '$LINUX_IDENTITY'"
 
 readarray -t HARBOR_PIN < <("$PYTHON" - <<'PY'
 import json
@@ -91,6 +91,9 @@ linux_identity = sys.argv[4]
 root = Path.cwd()
 lock = json.loads((root / 'HARBOR.lock.json').read_text(encoding='utf-8'))
 host = json.loads(host_path.read_text(encoding='utf-8'))
+backend = host.get('execution_backend')
+if backend not in {'wsl2_docker_engine', 'docker_desktop_linux_engine'}:
+    raise SystemExit(f'Unsupported or missing execution_backend in host evidence: {backend!r}')
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -110,13 +113,15 @@ def tree_digest(path: Path) -> str:
     return h.hexdigest()
 
 report = {
-    'schema_version': 2,
+    'schema_version': 3,
     'scope': 'PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION',
     'status': 'PASS',
     'physical_host_os': 'windows',
     'bootstrap_mode': host.get('bootstrap_mode'),
-    'controller_boundary': 'powershell_to_wsl2',
-    'execution_backend': 'docker_desktop_linux_engine',
+    'persistence_created': host.get('persistence_created', False),
+    'automatic_reboot': host.get('automatic_reboot', False),
+    'controller_boundary': host.get('controller_boundary', 'powershell_to_wsl2'),
+    'execution_backend': backend,
     'task_environment_os': 'linux_container',
     'native_windows_harbor_claimed': False,
     'official_swebench_semantics_preserved': True,
@@ -128,6 +133,10 @@ report = {
         'distro': host.get('wsl', {}).get('distro'),
         'python': platform.python_version(),
         'kernel': platform.release(),
+    },
+    'docker': {
+        'engine_version': host.get('docker', {}).get('engine_version'),
+        'daemon_location': host.get('docker', {}).get('daemon_location'),
     },
     'container_identity': linux_identity,
     'model_called': False,
