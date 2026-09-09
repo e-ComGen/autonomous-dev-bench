@@ -196,13 +196,13 @@ def _require_runtime_pair_matches_design(plan: "PairedExperimentPlan", design: E
         mismatches.append("seed")
     if plan.order_algorithm != design.pair_order_algorithm:
         mismatches.append("pair_order_algorithm")
-    if plan.task.task_repo_commit != design.task_repo_commit:
+    if str(plan.task.task_repo_commit) != design.task_repo_commit:
         mismatches.append("task_repo_commit")
     if plan.task.evaluator_version != design.official_swebench_version:
         mismatches.append("official_swebench_version")
-    if plan.stock_agent.implementation != "stock_deepseek_harness" or plan.stock_agent.commit != design.stock_commit:
+    if plan.stock_agent.implementation != "stock_deepseek_harness" or str(plan.stock_agent.commit) != design.stock_commit:
         mismatches.append("stock_agent")
-    if plan.adcp_agent.implementation != "adcp_zone_development" or plan.adcp_agent.commit != design.adcp_commit:
+    if plan.adcp_agent.implementation != "adcp_zone_development" or str(plan.adcp_agent.commit) != design.adcp_commit:
         mismatches.append("adcp_agent")
     if plan.model.identifier != design.model or plan.model.provider_route != design.provider:
         mismatches.append("model")
