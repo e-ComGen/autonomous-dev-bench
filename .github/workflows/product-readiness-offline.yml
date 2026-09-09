@@ -1,0 +1,91 @@
+name: product-readiness-offline
+
+on:
+  pull_request:
+    paths:
+      - "suites/coding/adcp_dsh_binding.py"
+      - "tools/qualify_phase3c3_real_adcp_dsh.py"
+      - "tools/product_readiness.py"
+      - "product_readiness.bat"
+      - "ADCP.lock.json"
+      - ".github/workflows/product-readiness-offline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-adcp-dsh-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install benchmark and exact DeepSeek Harness SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          DSH_VERSION="$(python -c "import json; print(json.load(open('DEEPSEEK_HARNESS.lock.json'))['sdk']['version'])")"
+          python -m pip install "deepseek-harness-sdk==${DSH_VERSION}"
+          python - <<'PY'
+          import importlib.metadata
+          import json
+          from pathlib import Path
+          lock = json.loads(Path('DEEPSEEK_HARNESS.lock.json').read_text(encoding='utf-8'))
+          observed = importlib.metadata.version('deepseek-harness-sdk')
+          assert observed == lock['sdk']['version'], (observed, lock['sdk']['version'])
+          print('DeepSeek Harness SDK pin:', observed)
+          PY
+      - name: Checkout exact pinned ADCP source
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT="$(python -c "import json; print(json.load(open('ADCP.lock.json'))['commit'])")"
+          rm -rf .product-readiness-adcp
+          git init .product-readiness-adcp
+          git -C .product-readiness-adcp remote add origin https://github.com/e-ComGen/autonomous-dev-control-plane.git
+          git -C .product-readiness-adcp fetch --depth=1 origin "$COMMIT"
+          git -C .product-readiness-adcp checkout --detach FETCH_HEAD
+          test "$(git -C .product-readiness-adcp rev-parse HEAD)" = "$COMMIT"
+          test -z "$(git -C .product-readiness-adcp status --porcelain)"
+      - name: Run pinned private runtime through real DeepSeek Harness subprocess
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          rm -rf artifacts/product-readiness
+          python tools/qualify_phase3c3_real_adcp_dsh.py \
+            --adcp-root .product-readiness-adcp \
+            --output artifacts/product-readiness/PHASE3C3_REAL_ADCP_DSH.json
+      - name: Assert offline product binding evidence
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          value = json.loads(Path('artifacts/product-readiness/PHASE3C3_REAL_ADCP_DSH.json').read_text(encoding='utf-8'))
+          assert value['status'] == 'PASS'
+          assert value['runtime_loaded'] is True
+          assert value['real_deepseek_harness_subprocess'] is True
+          assert value['production_binding_qualified'] is True
+          assert value['production_ready'] is True
+          assert value['paid_model_called'] is False
+          assert value['candidate_ready'] is True
+          assert value['task_completed'] is False
+          assert value['repair_count'] == 1
+          assert value['verification_count'] == 2
+          assert value['model_backed_role_calls'] == 5
+          assert value['provider_wire_requests'] == 5
+          assert value['workspace_scope_preserved'] is True
+          assert value['baseline_preserved'] is True
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-readiness-offline-${{ github.run_id }}
+          path: artifacts/product-readiness/**
+          if-no-files-found: warn
+          retention-days: 30
