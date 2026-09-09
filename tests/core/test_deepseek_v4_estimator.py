@@ -62,6 +62,18 @@ def test_estimator_uses_reference_encoder_and_tokenizer_for_exact_envelope() -> 
     assert estimator.identity.revision == DEEPSEEK_V4_REVISION
 
 
+def test_render_prompt_exposes_exact_reference_encoder_output_without_tokenizing() -> None:
+    encoder = RecordingEncoder()
+    tokenizer = FixedTokenizer(count=17)
+    estimator = DeepSeekV4RequestEstimator(encoder, tokenizer)
+
+    prompt = estimator.render_prompt(_request())
+
+    assert prompt == "official-prompt"
+    assert tokenizer.prompts == []
+    assert encoder.calls[0][1:] == ("thinking", "high")
+
+
 def test_top_level_tools_are_attached_to_system_anchor_like_reference_encoder_tests() -> None:
     encoder = RecordingEncoder()
     estimator = DeepSeekV4RequestEstimator(encoder, FixedTokenizer())
@@ -112,6 +124,27 @@ def test_tool_history_and_reasoning_content_are_preserved_for_reference_encoder(
     estimator.estimate(_request(messages=messages))
 
     assert encoder.calls[0][0] == messages
+
+
+def test_assistant_tool_call_requires_nonempty_wire_id() -> None:
+    estimator = DeepSeekV4RequestEstimator(RecordingEncoder(), FixedTokenizer())
+    messages = [
+        {"role": "system", "content": "Use tools."},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"},
+                }
+            ],
+        },
+    ]
+
+    with pytest.raises(ExactTokenEstimateUnavailable, match="non-empty id"):
+        estimator.estimate(_request(messages=messages))
 
 
 def test_disabled_thinking_maps_to_reference_chat_mode() -> None:
