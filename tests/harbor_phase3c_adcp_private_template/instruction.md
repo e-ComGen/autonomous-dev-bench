@@ -1,0 +1,1 @@
+Run the pinned private ADCP assured Zone Development Runtime through its existing Harness bridge against this Harbor workspace. Preserve the externally owned neighbor file, exercise the real FAIL → bounded repair → PASS cycle, and stop at CANDIDATE_READY without task completion, integration, or publication. Do not make a paid model call.
