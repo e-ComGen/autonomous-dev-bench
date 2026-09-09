@@ -42,6 +42,7 @@ def _download_assets(lock: dict[str, object], cache_dir: Path) -> dict[str, Path
     files = [
         source["encoding_file"],
         source["encoding_test_file"],
+        source["model_config_file"],
         source["tokenizer_file"],
         source["tokenizer_config_file"],
         *source["golden_cases"],
