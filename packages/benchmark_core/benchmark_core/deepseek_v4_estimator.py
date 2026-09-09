@@ -161,7 +161,8 @@ class DeepSeekV4RequestEstimator:
         spec.loader.exec_module(module)
         return module
 
-    def estimate(self, request: Mapping[str, object]) -> RequestBudgetEstimate:
+    def render_prompt(self, request: Mapping[str, object]) -> str:
+        """Render the exact pinned DeepSeek-V4 prompt for audit/parity checks."""
         unknown = set(request) - self._TOP_LEVEL_FIELDS
         if unknown:
             raise ExactTokenEstimateUnavailable(
@@ -170,7 +171,6 @@ class DeepSeekV4RequestEstimator:
         if request.get("model") != self._expected_model:
             raise ExactTokenEstimateUnavailable("DeepSeek-V4 estimator model identity mismatch")
 
-        max_output = self._positive_int(request.get("max_tokens"), "max_tokens")
         messages = self._normalize_messages(request.get("messages"))
         thinking_mode, reasoning_effort = self._thinking_policy(request)
         tools = request.get("tools")
@@ -189,6 +189,11 @@ class DeepSeekV4RequestEstimator:
             ) from error
         if not isinstance(prompt, str) or not prompt:
             raise ExactTokenEstimateUnavailable("DeepSeek-V4 reference encoder returned an invalid prompt")
+        return prompt
+
+    def estimate(self, request: Mapping[str, object]) -> RequestBudgetEstimate:
+        max_output = self._positive_int(request.get("max_tokens"), "max_tokens")
+        prompt = self.render_prompt(request)
 
         try:
             # Match the official model-card example exactly: tokenizer.encode(prompt).
@@ -260,9 +265,14 @@ class DeepSeekV4RequestEstimator:
         for call in raw:
             if not isinstance(call, Mapping) or call.get("type") != "function":
                 raise ExactTokenEstimateUnavailable("unsupported assistant tool call")
+            call_id = call.get("id")
+            if not isinstance(call_id, str) or not call_id:
+                raise ExactTokenEstimateUnavailable("assistant tool call requires a non-empty id")
             function = call.get("function")
             if not isinstance(function, Mapping):
                 raise ExactTokenEstimateUnavailable("tool call function must be an object")
+            if set(function) - {"name", "arguments"}:
+                raise ExactTokenEstimateUnavailable("unsupported tool call function fields")
             if not isinstance(function.get("name"), str) or not function.get("name"):
                 raise ExactTokenEstimateUnavailable("tool call function requires a name")
             if not isinstance(function.get("arguments"), str):
@@ -278,11 +288,18 @@ class DeepSeekV4RequestEstimator:
         for tool in raw_tools:
             if not isinstance(tool, Mapping) or tool.get("type") != "function":
                 raise ExactTokenEstimateUnavailable("DeepSeek-V4 estimator supports function tools only")
+            if set(tool) - {"type", "function"}:
+                raise ExactTokenEstimateUnavailable("unsupported top-level tool fields")
             function = tool.get("function")
             if not isinstance(function, Mapping):
                 raise ExactTokenEstimateUnavailable("tool function must be an object")
+            if set(function) - {"name", "description", "parameters"}:
+                raise ExactTokenEstimateUnavailable("unsupported tool function fields")
             if not isinstance(function.get("name"), str) or not function.get("name"):
                 raise ExactTokenEstimateUnavailable("tool function requires a name")
+            description = function.get("description")
+            if description is not None and not isinstance(description, str):
+                raise ExactTokenEstimateUnavailable("tool function description must be text")
             if "parameters" not in function or not isinstance(function.get("parameters"), Mapping):
                 raise ExactTokenEstimateUnavailable("tool function requires a parameters schema")
 
