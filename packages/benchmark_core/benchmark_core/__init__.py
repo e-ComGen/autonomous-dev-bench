@@ -25,6 +25,12 @@ from .experiment_manifest import (
     TrialManifest,
     TrialOutputs,
 )
+from .experiment_preregistration import (
+    ExperimentDesignSnapshot,
+    ExperimentPlanInvalid,
+    PAIR_ID_TEMPLATE,
+    PAIR_SEED_ALGORITHM,
+)
 from .identity import CanonicalModel, CommitPin, FrozenDict, Sha256Digest, VersionIdentity, canonical_json
 from .isolation import SandboxTrustStore
 from .manifest import load_project, load_scenario, load_suite, load_task
@@ -96,7 +102,9 @@ __all__ = [
     "ExactTokenEstimateUnavailable",
     "ExecutionManifest",
     "ExperimentArm",
+    "ExperimentDesignSnapshot",
     "ExperimentManifest",
+    "ExperimentPlanInvalid",
     "ExperimentRunner",
     "ExperimentSpec",
     "FrozenDict",
@@ -109,6 +117,8 @@ __all__ = [
     "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
+    "PAIR_ID_TEMPLATE",
+    "PAIR_SEED_ALGORITHM",
     "PairFairnessError",
     "PaidAdmissionSnapshot",
     "PaidExperimentBlocked",
