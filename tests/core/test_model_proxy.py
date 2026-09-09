@@ -169,7 +169,10 @@ def test_proxy_reservation_enforces_global_budget_before_dispatch() -> None:
     }
     estimates = {
         PinnedRequestEstimator.request_sha256(first_request): RequestBudgetEstimate(50, 40, 90),
-        PinnedRequestEstimator.request_sha256(second_request): RequestBudgetEstimate(50, 40, 90),
+        # 50+40 is the minimum input/output envelope, while 91 reserves one
+        # additional provider-accounted token. Input projects to exactly 100
+        # and output to 80, so only the primary total cap (181 > 180) fails.
+        PinnedRequestEstimator.request_sha256(second_request): RequestBudgetEstimate(50, 40, 91),
     }
     core = BudgetedModelProxyCore(
         ModelBudgetGateway(_budget()),
