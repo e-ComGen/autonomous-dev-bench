@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "role": "production_exact_request_estimator_assets",
+  "model_route": "deepseek-v4-flash",
+  "source": {
+    "repo_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "revision": "9e165c30e2704aec5d9d593cce3eebd58bbef1cb",
+    "license": "MIT",
+    "encoding_file": "encoding/encoding_dsv4.py",
+    "encoding_test_file": "encoding/test_encoding_dsv4.py",
+    "model_config_file": "config.json",
+    "tokenizer_file": "tokenizer.json",
+    "tokenizer_config_file": "tokenizer_config.json",
+    "golden_cases": [
+      "encoding/tests/test_input_1.json",
+      "encoding/tests/test_output_1.txt",
+      "encoding/tests/test_input_2.json",
+      "encoding/tests/test_output_2.txt",
+      "encoding/tests/test_input_3.json",
+      "encoding/tests/test_output_3.txt",
+      "encoding/tests/test_input_4.json",
+      "encoding/tests/test_output_4.txt"
+    ]
+  },
+  "python_dependencies": {
+    "transformers": "5.16.1",
+    "tokenizers": "0.23.2",
+    "huggingface-hub": "1.30.0"
+  },
+  "network_policy": {
+    "qualification_bootstrap_can_fetch": true,
+    "paid_trial_default_local_only": true
+  },
+  "provider_usage_source_of_truth": true,
+  "qualification_required": [
+    "official_encoder_golden_cases",
+    "wire_adapter_prompt_parity",
+    "tokenizer_load",
+    "tokenizer_nonzero_count",
+    "live_provider_prompt_usage_parity"
+  ],
+  "offline_qualification_status": "PASS",
+  "offline_qualification": {
+    "workflow_run_id": 34347337284,
+    "head_sha": "fa64a6f72c84a76446b272f951ae4f224f330da3",
+    "artifact_id": 10102254727,
+    "artifact_digest": "sha256:47741fbcdaba2c2009a23467b5c0362333473f0f05438b52d4b86e7dbe8483a6",
+    "official_encoder_all_four_passed": true,
+    "wire_prompt_exact_match": true,
+    "wire_case_1_input_tokens": 541,
+    "wire_case_1_prompt_sha256": "9b366d9d2eac842a6e890594aac0b58648e5623717202b33497afadf03e26540",
+    "encoding_file_sha256": "abc0d26120250dda0ae077dc64aa28836026e61e970854aaeb792445e6a0dde6",
+    "tokenizer_file_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",
+    "paid_model_called": false
+  },
+  "live_provider_prompt_usage_parity": false,
+  "paid_ready": false,
+  "production_blocker": "LIVE_PROVIDER_PROMPT_USAGE_PARITY_NOT_RUN"
+}

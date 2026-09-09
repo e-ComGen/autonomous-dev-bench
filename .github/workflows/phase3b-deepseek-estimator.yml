@@ -1,0 +1,62 @@
+name: phase3b-deepseek-estimator
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "DEEPSEEK_V4_ESTIMATOR.lock.json"
+      - "packages/benchmark_core/benchmark_core/deepseek_v4_estimator.py"
+      - "tests/core/test_deepseek_v4_estimator.py"
+      - "tests/core/test_deepseek_v4_estimator_lock.py"
+      - "tests/core/test_deepseek_v4_usage_parity.py"
+      - "tools/qualify_deepseek_v4_estimator.py"
+      - "tools/verify_deepseek_v4_usage_parity.py"
+      - "pyproject.toml"
+      - ".github/workflows/phase3b-deepseek-estimator.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-offline-estimator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install pinned estimator qualification closure
+        run: python -m pip install -e ".[dev,deepseek-estimator]"
+
+      - name: Run estimator unit boundary
+        run: >-
+          python -m pytest
+          tests/core/test_deepseek_v4_estimator.py
+          tests/core/test_deepseek_v4_estimator_lock.py
+          tests/core/test_deepseek_v4_usage_parity.py
+
+      - name: Qualify pinned official encoder and tokenizer
+        run: python tools/qualify_deepseek_v4_estimator.py
+
+      - name: Assert no paid readiness claim
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          evidence = json.loads(Path("artifacts/phase3b-deepseek-estimator/PHASE3B_DEEPSEEK_V4_ESTIMATOR.json").read_text())
+          assert evidence["status"] == "PASS"
+          assert evidence["paid_model_called"] is False
+          assert evidence["live_provider_prompt_usage_parity"] is False
+          assert evidence["paid_ready"] is False
+          assert evidence["production_blocker"] == "LIVE_PROVIDER_PROMPT_USAGE_PARITY_NOT_RUN"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase3b-deepseek-v4-estimator-offline-evidence
+          path: artifacts/phase3b-deepseek-estimator/PHASE3B_DEEPSEEK_V4_ESTIMATOR.json
+          if-no-files-found: error
+          retention-days: 30
