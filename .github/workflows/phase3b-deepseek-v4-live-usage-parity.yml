@@ -1,0 +1,88 @@
+name: phase3b-deepseek-v4-live-usage-parity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-prompt-usage-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AUTOBENCH_DEEPSEEK_API_KEY: ${{ secrets.AUTOBENCH_DEEPSEEK_API_KEY }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Require explicit DeepSeek credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AUTOBENCH_DEEPSEEK_API_KEY:-}" ]; then
+            echo "AUTOBENCH_DEEPSEEK_API_KEY is not configured; live provider parity remains NOT_RUN." >&2
+            exit 2
+          fi
+
+      - name: Install pinned estimator dependencies
+        run: python -m pip install -e '.[deepseek-estimator]'
+
+      - name: Bootstrap immutable DeepSeek V4 estimator assets
+        shell: python
+        run: |
+          from benchmark_core.deepseek_v4_estimator import DeepSeekV4RequestEstimator
+          DeepSeekV4RequestEstimator.from_huggingface_revision(
+              cache_dir='.cache/deepseek-v4-estimator',
+              allow_network=True,
+          )
+          print('PINNED_ESTIMATOR_ASSETS_READY')
+
+      - name: Capture one minimal official DeepSeek stream
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/phase3b-live-parity
+          python tools/capture_deepseek_v4_live_usage.py \
+            --output artifacts/phase3b-live-parity/capture.json \
+            --text 'Reply with OK.' \
+            --max-tokens 8
+
+      - name: Verify exact local prompt-token parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/verify_deepseek_v4_usage_parity.py \
+            artifacts/phase3b-live-parity/capture.json \
+            --cache-dir .cache/deepseek-v4-estimator \
+            | tee artifacts/phase3b-live-parity/parity.json
+
+      - name: Assert evidence boundary
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          capture = json.loads(Path('artifacts/phase3b-live-parity/capture.json').read_text(encoding='utf-8'))
+          parity = json.loads(Path('artifacts/phase3b-live-parity/parity.json').read_text(encoding='utf-8'))
+          assert capture['model_called'] is True
+          assert capture['provider'] == 'deepseek-official'
+          assert capture['model'] == 'deepseek-v4-flash'
+          assert capture['credential_recorded'] is False
+          assert parity['status'] == 'PASS'
+          assert parity['exact_match'] is True
+          assert parity['estimated_input_tokens'] == parity['provider_prompt_tokens']
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3b-deepseek-v4-live-parity-${{ github.run_id }}
+          path: artifacts/phase3b-live-parity/**
+          if-no-files-found: warn
+          retention-days: 30
