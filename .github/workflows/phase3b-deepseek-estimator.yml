@@ -7,7 +7,10 @@ on:
       - "DEEPSEEK_V4_ESTIMATOR.lock.json"
       - "packages/benchmark_core/benchmark_core/deepseek_v4_estimator.py"
       - "tests/core/test_deepseek_v4_estimator.py"
+      - "tests/core/test_deepseek_v4_estimator_lock.py"
+      - "tests/core/test_deepseek_v4_usage_parity.py"
       - "tools/qualify_deepseek_v4_estimator.py"
+      - "tools/verify_deepseek_v4_usage_parity.py"
       - "pyproject.toml"
       - ".github/workflows/phase3b-deepseek-estimator.yml"
 
@@ -26,11 +29,15 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install pinned estimator closure
-        run: python -m pip install -e ".[deepseek-estimator]"
+      - name: Install pinned estimator qualification closure
+        run: python -m pip install -e ".[dev,deepseek-estimator]"
 
       - name: Run estimator unit boundary
-        run: python -m pytest tests/core/test_deepseek_v4_estimator.py
+        run: >-
+          python -m pytest
+          tests/core/test_deepseek_v4_estimator.py
+          tests/core/test_deepseek_v4_estimator_lock.py
+          tests/core/test_deepseek_v4_usage_parity.py
 
       - name: Qualify pinned official encoder and tokenizer
         run: python tools/qualify_deepseek_v4_estimator.py
