@@ -6,6 +6,8 @@ on:
       - "suites/coding/adcp_dsh_binding.py"
       - "tools/qualify_phase3c3_real_adcp_dsh.py"
       - "tools/product_readiness.py"
+      - "tools/product_readiness_campaign.py"
+      - "tools/product_readiness_harbor.py"
       - "product_readiness.bat"
       - "ADCP.lock.json"
       - ".github/workflows/product-readiness-offline.yml"
@@ -20,6 +22,7 @@ jobs:
     timeout-minutes: 30
     env:
       ADCP_REPO_TOKEN: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +47,14 @@ jobs:
           assert observed == lock['sdk']['version'], (observed, lock['sdk']['version'])
           print('DeepSeek Harness SDK pin:', observed)
           PY
+      - name: Compile product-readiness entrypoints
+        run: >-
+          python -m py_compile
+          suites/coding/adcp_dsh_binding.py
+          tools/qualify_phase3c3_real_adcp_dsh.py
+          tools/product_readiness.py
+          tools/product_readiness_campaign.py
+          tools/product_readiness_harbor.py
       - name: Exercise shipping DeepSeek Harness subprocess over real HTTP/SSE
         shell: python
         run: |
