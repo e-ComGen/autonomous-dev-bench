@@ -91,7 +91,11 @@ def test_resource_caps_must_fit_inside_primary_total_budget() -> None:
     with pytest.raises(DesignCalibrationError, match="input token cap"):
         caps(total_model_token_cap_per_arm=100, input_token_cap_per_arm=101)
     with pytest.raises(DesignCalibrationError, match="output token cap"):
-        caps(total_model_token_cap_per_arm=100, output_token_cap_per_arm=101)
+        caps(
+            total_model_token_cap_per_arm=100,
+            input_token_cap_per_arm=100,
+            output_token_cap_per_arm=101,
+        )
 
 
 def test_compiler_refuses_to_overwrite_any_existing_design_choice() -> None:
