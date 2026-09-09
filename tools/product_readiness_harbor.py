@@ -189,13 +189,16 @@ echo STOCK_HARBOR_REAL_TRIAL=PASS
 def run_adcp_boundary_trial(root: Path, workspace: Path, harbor_root: Path) -> str:
     task = workspace / "harbor-adcp-boundary-task"
     trials = workspace / "harbor-adcp-boundary-trials"
+    adcp_evidence = workspace / "artifacts" / "phase3c-adcp" / "PHASE3C_ADCP_FAKE_HARBOR.json"
     _prepare_task(root / "tests" / "harbor_phase3c_adcp_fake", task)
     prefix = _common_script_prefix(root, harbor_root)
     task_linux = _linux_path(task)
     trials_linux = _linux_path(trials)
+    adcp_evidence_linux = _linux_path(adcp_evidence)
     script = prefix + f"""
 TASK={shlex.quote(task_linux)}
 TRIALS={shlex.quote(trials_linux)}
+ADCP_EVIDENCE={shlex.quote(adcp_evidence_linux)}
 rm -rf "$TRIALS"
 cd "$BENCH"
 AUTOBENCH_ADCP_FAKE_RUNTIME=1 \\
@@ -205,7 +208,9 @@ AUTOBENCH_MODEL_PROXY_TOKEN=product-readiness-proxy-token \\
   --agent suites.coding.harbor.adcp_agent:ADCPHarborAgent \\
   --trial-name product-readiness-adcp-boundary \\
   --trials-dir "$TRIALS"
-"$PY" tools/verify_phase3c_adcp_fake_harbor.py --trials-dir "$TRIALS"
+"$PY" tools/verify_phase3c_adcp_fake_harbor.py \\
+  --trials-dir "$TRIALS" \\
+  --output "$ADCP_EVIDENCE"
 echo ADCP_HARBOR_PROCESS_BOUNDARY=PASS
 """
     return _bash(script, timeout=1800)
