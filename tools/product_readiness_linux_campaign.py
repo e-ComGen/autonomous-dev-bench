@@ -61,21 +61,45 @@ def _git_head(path: Path) -> str:
 def _assert_clean(path: Path) -> None:
     # The accepted Windows host flow checks out pins with Git for Windows and
     # executes the Linux campaign over /mnt/c. WSL Git can otherwise report
-    # every CRLF-normalized file as modified. Ignore CR-at-EOL only; actual
-    # content changes and untracked files remain fail-closed.
-    tracked = _run(
-        ["git", "-C", str(path), "diff", "--name-only", "--ignore-cr-at-eol", "HEAD", "--"],
-        cwd=path,
+    # every CRLF-normalized file as modified. `--name-only` still reports those
+    # paths even with `--ignore-cr-at-eol`, so use the diff exit status as the
+    # authority and ask for names only when a real tracked change exists.
+    command = ["git", "-C", str(path), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--"]
+    print("+", subprocess.list2cmdline(command), flush=True)
+    completed = subprocess.run(
+        command,
+        cwd=str(path),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         timeout=180,
-    ).strip()
+        check=False,
+    )
+    if completed.returncode not in (0, 1):
+        raise RuntimeError(
+            f"git tracked cleanliness check failed with exit {completed.returncode}: {path}\n"
+            + (completed.stdout or "")[-6000:]
+        )
+    tracked_changed = completed.returncode == 1
+    tracked = ""
+    if tracked_changed:
+        tracked = _run(
+            ["git", "-C", str(path), "diff", "--name-only", "HEAD", "--"],
+            cwd=path,
+            timeout=180,
+        ).strip()
+        if not tracked:
+            tracked = "<tracked content differs from HEAD>"
     untracked = _run(
         ["git", "-C", str(path), "ls-files", "--others", "--exclude-standard"],
         cwd=path,
         timeout=180,
     ).strip()
-    if tracked or untracked:
+    if tracked_changed or untracked:
         details: list[str] = []
-        if tracked:
+        if tracked_changed:
             details.append("tracked changes:\n" + tracked)
         if untracked:
             details.append("untracked files:\n" + untracked)
