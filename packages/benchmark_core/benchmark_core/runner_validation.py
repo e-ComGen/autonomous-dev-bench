@@ -2,7 +2,7 @@
 
 This module owns the pre-execution proof that a requested benchmark run is
 bound to the immutable experiment, exact production implementation, trusted
-sandbox, and complete baseline evidence.  Keeping this logic out of the runner
+sandbox, and complete baseline evidence. Keeping this logic out of the runner
 lets ``ExperimentRunner`` remain an orchestration component rather than also
 being the admission-policy authority.
 """
@@ -12,7 +12,11 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 
-from .adapter_contracts import CommandSystemAdapter, require_command_system_adapter
+from .adapter_contracts import (
+    CommandSystemAdapter,
+    DeclaredProductionIdentity,
+    require_command_system_adapter,
+)
 from .cas import FileSystemCAS
 from .checkout import RepositorySnapshot, source_tree_digest
 from .environment import BaselineHealth, baseline_action_key
@@ -20,7 +24,6 @@ from .evidence import EvidenceBundleWriter
 from .execution import CommandSpec, SandboxProvider
 from .experiment import ExperimentSpec, SystemUnderTest
 from .identity import Sha256Digest, canonical_json
-from .isolation import IsolationPolicy
 from .project import ProjectSpec
 from .result import RunStatus
 from .scenario import ScenarioSpec
@@ -41,14 +44,7 @@ class AuthoritativeAdmission:
 class AuthoritativeAdmissionValidator:
     """Fail-closed validator for immutable authoritative run inputs."""
 
-    def __init__(
-        self,
-        *,
-        isolation_policy: IsolationPolicy,
-        cas: FileSystemCAS,
-        sandbox_provider: SandboxProvider,
-    ) -> None:
-        self._isolation_policy = isolation_policy
+    def __init__(self, *, cas: FileSystemCAS, sandbox_provider: SandboxProvider) -> None:
         self._cas = cas
         self._sandbox_provider = sandbox_provider
 
@@ -114,10 +110,11 @@ class AuthoritativeAdmissionValidator:
             raise ValueError("launched executable does not match SystemUnderTest digest")
 
         command_adapter = require_command_system_adapter(adapter)
-        if command_adapter.production_system_id != system.system_id:
-            raise ValueError("adapter production system does not match SystemUnderTest")
-        if command_adapter.production_version != system.version:
-            raise ValueError("adapter production version does not match SystemUnderTest")
+        if isinstance(command_adapter, DeclaredProductionIdentity):
+            if command_adapter.production_system_id != system.system_id:
+                raise ValueError("adapter production system does not match SystemUnderTest")
+            if command_adapter.production_version != system.version:
+                raise ValueError("adapter production version does not match SystemUnderTest")
         if not command_adapter.validate_system_binding(system, implementation_path, executable_path):
             raise ValueError("adapter rejected the pinned production implementation/API binding")
 
