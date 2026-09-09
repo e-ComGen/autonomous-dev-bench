@@ -38,7 +38,7 @@ Phase 3A merged to `main` as `7650c62f126dba161a4da92d631895b81fd66e52`.
 
 ## Phase 3B — cross-process model transport
 
-A budgeted OpenAI-compatible proxy boundary is now implemented for deterministic qualification.
+The deterministic cross-process proxy qualification is accepted.
 
 Properties:
 
@@ -53,9 +53,18 @@ Properties:
 - unknown requests without an exact pre-dispatch estimate fail before upstream dispatch;
 - there is no character-count or bytes-per-token heuristic fallback;
 - `/usage` exposes the read-only experiment ledger for the runner;
-- a standalone proxy process entrypoint exists for a real cross-process boundary.
+- a standalone proxy process entrypoint proves a real cross-process credential/budget boundary.
 
 The exact pinned DeepSeek Harness contract used for this design is `a66e4702047846cdaa10c66c9d3df3951f5ea70d`; its DeepSeek route emits streaming chat completions with `stream_options.include_usage=true` and terminal usage fields compatible with this proxy.
+
+Accepted CI run `34304155920` passes:
+
+- firewall self-test;
+- Ubuntu Python 3.11 / 3.12 / 3.13 pytest + build;
+- Windows Python 3.11 / 3.12 / 3.13 pytest + build;
+- in-process HTTP proxy qualification;
+- real subprocess proxy qualification;
+- fail-closed unknown-estimate and missing-usage paths.
 
 ### Production blocker
 
@@ -97,7 +106,7 @@ PHASE0_1_CLEAN_MAIN: PASS
 PHASE2_HARBOR_SUBSTRATE: PASS
 PHASE2_WINDOWS_PHYSICAL_HOST: PASS
 PHASE3A_MODEL_BUDGET_AUTHORITY: PASS
-PHASE3B_CROSS_PROCESS_PROXY_FIXTURE: IMPLEMENTED / CI_PENDING
+PHASE3B_CROSS_PROCESS_PROXY_FIXTURE: PASS
 PHASE3B_PRODUCTION_EXACT_TOKEN_ESTIMATOR: NOT_IMPLEMENTED
 PHASE3C_ADCP_HARBOR_ADAPTER: NOT_IMPLEMENTED
 PAID_PAIRED_AB: NOT_RUN
