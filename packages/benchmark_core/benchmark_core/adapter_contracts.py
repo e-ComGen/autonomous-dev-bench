@@ -24,7 +24,6 @@ from .result import SystemObservation
 class AdapterIdentity(Protocol):
     adapter_id: str
     adapter_version: str
-    execution_boundary: str
 
 
 @runtime_checkable
@@ -36,10 +35,7 @@ class SystemAdapter(AdapterIdentity, Protocol):
 
 @runtime_checkable
 class SystemBindingValidator(AdapterIdentity, Protocol):
-    """Capability that binds an adapter to an exact production implementation."""
-
-    production_system_id: str
-    production_version: str
+    """Capability that validates an exact production implementation binding."""
 
     def validate_system_binding(
         self,
@@ -56,6 +52,14 @@ class CommandSystemAdapter(SystemBindingValidator, Protocol):
     def prepare_command(self, invocation: Any, run_context: Any) -> CommandSpec: ...
 
     def parse_execution(self, execution: ExecutionResult) -> SystemObservation: ...
+
+
+@runtime_checkable
+class DeclaredProductionIdentity(Protocol):
+    """Optional stronger binding declared by production adapters that expose it."""
+
+    production_system_id: str
+    production_version: str
 
 
 @runtime_checkable
