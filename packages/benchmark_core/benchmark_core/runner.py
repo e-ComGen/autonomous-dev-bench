@@ -1,7 +1,8 @@
 """Platform-owned suite orchestration.
 
-Suites choose a checkpoint and interpret observations.  This runner alone owns
-worktree creation, isolation validation, invocation capture and stage evidence.
+Suites choose a checkpoint and interpret observations.  The runner composes
+validated admission, isolated materialization/execution, suite evaluation, and
+evidence publication without owning the authoritative admission policy itself.
 """
 from __future__ import annotations
 
@@ -9,23 +10,29 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-import hashlib
 import inspect
 import json
 import tempfile
 from typing import Any, Protocol
 
+from .adapter_contracts import (
+    AdapterIdentity,
+    ReadOnlyAdapter,
+    SystemAdapter,
+    require_system_adapter,
+)
 from .cache import ActionCache, observation_action_key, oracle_action_key
 from .cas import FileSystemCAS
 from .checkout import RepositorySnapshot, source_tree_digest
-from .environment import baseline_action_key, BaselineHealth
+from .environment import BaselineHealth
 from .evidence import EvidenceBundleVerifier, EvidenceBundleWriter
-from .execution import CommandSpec, ExecutionResult, ProcessRunner, SandboxProvider
+from .execution import CommandSpec, ProcessRunner, SandboxProvider
 from .experiment import ExperimentSpec, SuitePlan, SystemUnderTest
 from .identity import Sha256Digest, canonical_json
 from .isolation import IsolationCapabilities, IsolationPolicy, SandboxTrustStore, local_process_capabilities, validate_isolation
 from .overlay import MaterializationRecord
 from .project import ProjectSpec
+from .runner_validation import AuthoritativeAdmission, AuthoritativeAdmissionValidator
 from .scenario import ScenarioSpec
 from .task import TaskSpec
 from .result import HardGate, OracleResult, RunStatus, StageResult, SuiteResult, SystemObservation
@@ -35,15 +42,6 @@ from .worktree import WorktreeManager
 class BenchmarkSuite(Protocol):
     def plan(self, scenario: Any) -> SuitePlan: ...
     def evaluate(self, scenario: Any, observation: SystemObservation, oracle_context: Any) -> SuiteResult: ...
-
-
-class SystemAdapter(Protocol):
-    adapter_id: str
-    adapter_version: str
-    execution_boundary: str
-
-    def invoke(self, invocation: Any, run_context: "RunContext") -> SystemObservation: ...
-    def validate_system_binding(self, system: SystemUnderTest, implementation_path: Path, executable_path: Path) -> bool: ...
 
 
 class CheckpointMaterializer(Protocol):
@@ -83,6 +81,7 @@ def _expected_overlays(scenario: ScenarioSpec, checkpoint_id: str) -> tuple[str,
     by_id = {item.checkpoint_id: item for item in scenario.checkpoints}
     ordered: list[str] = []
     seen: set[str] = set()
+
     def visit(current: str) -> None:
         if current in seen:
             return
@@ -90,6 +89,7 @@ def _expected_overlays(scenario: ScenarioSpec, checkpoint_id: str) -> tuple[str,
             visit(parent)
         ordered.extend(by_id[current].overlays)
         seen.add(current)
+
     visit(checkpoint_id)
     return tuple(ordered)
 
@@ -131,6 +131,7 @@ class ExperimentRunner:
         self.action_cache = action_cache
         self.sandbox_provider = sandbox_provider
         self.last_evidence_receipt: str | None = None
+        self._admission_validator: AuthoritativeAdmissionValidator | None = None
         if self.isolation_policy.authoritative:
             if sandbox_trust_store is None:
                 raise ValueError("authoritative runner requires an operator-owned sandbox trust store")
@@ -143,8 +144,16 @@ class ExperimentRunner:
         if self.sandbox_provider is not None:
             attestation = self.sandbox_provider.attest()
             self.isolation_capabilities = attestation.capabilities
-        if self.isolation_policy.authoritative and cas is None:
-            raise ValueError("authoritative runner requires a CAS for mandatory evidence")
+        if self.isolation_policy.authoritative:
+            if cas is None:
+                raise ValueError("authoritative runner requires a CAS for mandatory evidence")
+            if self.sandbox_provider is None:
+                raise ValueError("authoritative runner requires an attested sandbox provider")
+            self._admission_validator = AuthoritativeAdmissionValidator(
+                isolation_policy=self.isolation_policy,
+                cas=cas,
+                sandbox_provider=self.sandbox_provider,
+            )
 
     def run_suite(
         self,
@@ -152,7 +161,7 @@ class ExperimentRunner:
         snapshot: RepositorySnapshot,
         scenario: Any,
         suite: BenchmarkSuite,
-        adapter: SystemAdapter,
+        adapter: AdapterIdentity,
         checkpoint_materializer: CheckpointMaterializer,
         invocation: Any,
         oracle_context: Any,
@@ -172,74 +181,32 @@ class ExperimentRunner:
         attempt_index: int = 0,
     ) -> SuiteResult:
         validate_isolation(self.isolation_policy, self.isolation_capabilities)
+        admission: AuthoritativeAdmission | None = None
+        baseline_set: tuple[BaselineHealth, ...] = ()
+        expected_attestation: str | None = None
         if self.isolation_policy.authoritative:
-            if environment_digest is None:
-                raise ValueError("authoritative run requires a pinned environment digest")
-            if evidence is None or evidence_receipt_path is None:
-                raise ValueError("authoritative run requires an evidence bundle and external receipt path")
-            if not isinstance(project, ProjectSpec) or not isinstance(task, TaskSpec) or not isinstance(scenario, ScenarioSpec) or not isinstance(experiment, ExperimentSpec):
-                raise ValueError("authoritative run requires typed project, task, and experiment identities")
-            if not 0 <= attempt_index < experiment.attempts or experiment.seeds[attempt_index] != seed:
-                raise ValueError("attempt index and seed do not match the immutable experiment")
-            if experiment.project != project.identity or experiment.task != task.identity or experiment.scenario != scenario.identity or experiment.system != system:
-                raise ValueError("experiment identities do not match the authoritative inputs")
-            if str(experiment.environment_digest) != environment_digest:
-                raise ValueError("experiment environment does not match the authoritative run")
-            if scenario.project_id != project.project_id or scenario.task_id != task.task_id or task.project_id != project.project_id:
-                raise ValueError("scenario, task, and project identities are not bound")
-            if snapshot.commit != str(project.source.commit_sha) or str(snapshot.source_tree_digest) != str(project.source.source_tree_digest):
-                raise ValueError("materialized repository does not match the pinned project")
-            if not isinstance(system, SystemUnderTest):
-                raise ValueError("authoritative run requires a pinned SystemUnderTest identity")
-            implementation_digest = system.configuration.get("implementation_digest")
-            executable_digest = system.configuration.get("executable_digest")
-            if not isinstance(implementation_digest, str) or not isinstance(executable_digest, str):
-                raise ValueError("authoritative SystemUnderTest requires implementation and executable digests")
-            Sha256Digest(implementation_digest); Sha256Digest(executable_digest)
-            if system_implementation_path is None or source_tree_digest(Path(system_implementation_path)) != implementation_digest:
-                raise ValueError("launched production implementation does not match SystemUnderTest digest")
-            executable_path = Path(system_executable_path or "").resolve()
-            if not executable_path.is_file() or "sha256:" + hashlib.sha256(executable_path.read_bytes()).hexdigest() != executable_digest:
-                raise ValueError("launched executable does not match SystemUnderTest digest")
-            expected_system_id = getattr(adapter, "production_system_id", None)
-            expected_system_version = getattr(adapter, "production_version", None)
-            if expected_system_id is not None and expected_system_id != system.system_id:
-                raise ValueError("adapter production system does not match SystemUnderTest")
-            if expected_system_version is not None and expected_system_version != system.version:
-                raise ValueError("adapter production version does not match SystemUnderTest")
-            baseline_set = baseline_health if isinstance(baseline_health, tuple) else ()
-            if len(baseline_set) != len(project.baseline.commands):
-                raise ValueError("authoritative run requires a complete ordered baseline receipt")
-            expected_attestation = str(Sha256Digest.of(self.sandbox_provider.attest()))
-            for health, declared in zip(baseline_set, project.baseline.commands, strict=True):
-                expected_argv = (str(Path(system_executable_path).resolve()), *declared.argv[1:]) if declared.argv[0] in {"python", "python3"} else declared.argv
-                if not isinstance(health, BaselineHealth) or health.status is not RunStatus.PASS or not health.passed or not health.result.succeeded or not health.authoritative or health.result.argv != tuple(expected_argv):
-                    raise ValueError("authoritative baseline receipt does not match a declared PASS command")
-                try:
-                    realized_command = CommandSpec(**dict(health.command_spec))
-                except (TypeError, ValueError) as exc:
-                    raise ValueError("baseline command receipt is malformed") from exc
-                if realized_command.argv != tuple(expected_argv) or realized_command.timeout_seconds != declared.timeout_seconds:
-                    raise ValueError("baseline command spec does not match the declared policy")
-                if realized_command.cwd is None or source_tree_digest(Path(realized_command.cwd)) != str(project.source.source_tree_digest):
-                    raise ValueError("baseline command cwd is not the pinned pristine project")
-                if str(Sha256Digest.of(dict(health.command_spec))) != health.command_spec_digest:
-                    raise ValueError("baseline command digest is inconsistent")
-                expected_action_key = baseline_action_key(environment_digest, realized_command, project_digest=str(project.content_digest),
-                    baseline_revision=project.baseline.baseline_health_revision, executor_version="3", test_policy_version="1", authoritative=True,
-                    sandbox_attestation_digest=expected_attestation)
-                if health.action_key != expected_action_key or health.executor_version != "3" or health.test_policy_version != "1" or health.baseline_revision != project.baseline.baseline_health_revision:
-                    raise ValueError("baseline action, executor, or policy revision is not pinned")
-                if health.project_digest != str(project.content_digest) or health.environment_fingerprint != environment_digest:
-                    raise ValueError("baseline health identity does not match the authoritative run")
-                if health.sandbox_attestation_digest != expected_attestation or not health.evidence_digest.startswith("cas:sha256:"):
-                    raise ValueError("baseline sandbox evidence does not match the execution provider")
-                self.cas.verify(health.evidence_digest)
-                baseline_payload = canonical_json({"argv": health.result.argv, "returncode": health.result.returncode,
-                    "stdout": health.result.stdout, "stderr": health.result.stderr, "timed_out": health.result.timed_out}).encode("utf-8")
-                if FileSystemCAS.ref_for(baseline_payload) != health.evidence_digest:
-                    raise ValueError("baseline result does not match its CAS execution evidence")
-            Sha256Digest(environment_digest)
+            if self._admission_validator is None:
+                raise RuntimeError("authoritative admission validator is not configured")
+            admission = self._admission_validator.validate(
+                snapshot=snapshot,
+                scenario=scenario,
+                adapter=adapter,
+                seed=seed,
+                evidence=evidence,
+                environment_digest=environment_digest,
+                system=system,
+                baseline_health=baseline_health,
+                evidence_receipt_path=evidence_receipt_path,
+                project=project,
+                task=task,
+                system_implementation_path=system_implementation_path,
+                system_executable_path=system_executable_path,
+                experiment=experiment,
+                attempt_index=attempt_index,
+            )
+            baseline_set = admission.baseline_set
+            expected_attestation = admission.expected_attestation
+
         plan = suite.plan(scenario)
         if self.isolation_policy.authoritative:
             if not isinstance(scenario, ScenarioSpec):
@@ -262,14 +229,6 @@ class ExperimentRunner:
             raise ValueError(f"adapter mismatch: plan requires {plan.adapter_id}, got {adapter.adapter_id}")
         if adapter.adapter_version != plan.adapter_version:
             raise ValueError(f"adapter version mismatch: plan requires {plan.adapter_version}, got {adapter.adapter_version}")
-        if self.isolation_policy.authoritative and not (
-            callable(getattr(adapter, "prepare_command", None))
-            and callable(getattr(adapter, "parse_execution", None))
-            and callable(getattr(adapter, "validate_system_binding", None))
-        ):
-            raise ValueError("authoritative evaluation requires a bound runner-owned command adapter")
-        if self.isolation_policy.authoritative and not adapter.validate_system_binding(system, Path(system_implementation_path), Path(system_executable_path)):
-            raise ValueError("adapter rejected the pinned production implementation/API binding")
         _assert_public_invocation(invocation)
         if self.isolation_policy.authoritative and plan.labels_ref != "none":
             if getattr(oracle_context, "labels_ref", None) != plan.labels_ref:
@@ -310,7 +269,8 @@ class ExperimentRunner:
                 )
                 cache_key = None
                 cached_payload = None
-                if self.action_cache is not None and getattr(adapter, "read_only", False):
+                is_read_only = isinstance(adapter, ReadOnlyAdapter) and adapter.read_only
+                if self.action_cache is not None and is_read_only:
                     adapter_configuration = {
                         "command": getattr(adapter, "command", None),
                         "timeout_seconds": getattr(adapter, "timeout_seconds", None),
@@ -335,10 +295,12 @@ class ExperimentRunner:
                 if cached_payload is not None:
                     observation = SystemObservation(**json.loads(cached_payload))
                 elif self.isolation_policy.authoritative:
-                    command = adapter.prepare_command(invocation, context)
+                    if admission is None:
+                        raise RuntimeError("authoritative admission is missing")
+                    command = admission.adapter.prepare_command(invocation, context)
                     if not isinstance(command, CommandSpec):
                         raise TypeError("prepare_command must return CommandSpec")
-                    if Path(command.argv[0]).resolve() != Path(system_executable_path).resolve():
+                    if Path(command.argv[0]).resolve() != admission.executable_path:
                         raise ValueError("adapter command executable does not match pinned SystemUnderTest executable")
                     scenario_timeout = getattr(scenario_execution, "timeout_seconds", None)
                     if scenario_timeout is None:
@@ -351,18 +313,16 @@ class ExperimentRunner:
                     command_environment = dict(command.environment)
                     command_environment.update({
                         "TMP": str(context.temporary_directory), "TEMP": str(context.temporary_directory), "TMPDIR": str(context.temporary_directory),
-                        "AUTODEV_BOUND_EXECUTABLE": str(Path(system_executable_path).resolve()),
-                        "AUTODEV_BOUND_IMPLEMENTATION": str(Path(system_implementation_path).resolve()),
+                        "AUTODEV_BOUND_EXECUTABLE": str(admission.executable_path),
+                        "AUTODEV_BOUND_IMPLEMENTATION": str(admission.implementation_path),
                     })
                     command = replace(command, timeout_seconds=float(scenario_timeout), cwd=str(command_cwd), environment=command_environment)
-                    execution = (
-                        self.sandbox_provider.run(command, policy=self.isolation_policy)
-                        if self.isolation_policy.authoritative else
-                        self.process_runner.run(command, policy=self.isolation_policy)
-                    )
-                    observation = adapter.parse_execution(execution)
+                    if self.sandbox_provider is None:
+                        raise RuntimeError("authoritative sandbox provider is missing")
+                    execution = self.sandbox_provider.run(command, policy=self.isolation_policy)
+                    observation = admission.adapter.parse_execution(execution)
                 else:
-                    observation = adapter.invoke(invocation, context)
+                    observation = require_system_adapter(adapter).invoke(invocation, context)
                 if cache_key is not None and cached_payload is None:
                     self.action_cache.put_bytes(cache_key, canonical_json(observation).encode("utf-8"))
             output_digest = source_tree_digest(worktree.path)
