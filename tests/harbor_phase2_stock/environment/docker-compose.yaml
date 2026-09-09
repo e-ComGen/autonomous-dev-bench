@@ -1,0 +1,17 @@
+services:
+  main:
+    depends_on:
+      fake-model:
+        condition: service_healthy
+
+  fake-model:
+    build:
+      context: ./fake-model
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
+      interval: 1s
+      timeout: 3s
+      retries: 20
+      start_period: 2s

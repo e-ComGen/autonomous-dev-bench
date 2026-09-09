@@ -1,0 +1,122 @@
+name: phase2-harbor-stock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stock-transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install benchmark tests
+        run: python -m pip install -e '.[dev]'
+      - name: Fetch exact Harbor source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARBOR_COMMIT="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['commit'])")"
+          rm -rf .phase2-harbor
+          git init .phase2-harbor
+          git -C .phase2-harbor remote add origin https://github.com/harbor-framework/harbor.git
+          git -C .phase2-harbor fetch --depth=1 origin "$HARBOR_COMMIT"
+          git -C .phase2-harbor checkout --detach FETCH_HEAD
+          test "$(git -C .phase2-harbor rev-parse HEAD)" = "$HARBOR_COMMIT"
+          python -m pip install -e .phase2-harbor
+          python - <<'PY'
+          import importlib.metadata
+          import json
+          from pathlib import Path
+
+          lock = json.loads(Path('HARBOR.lock.json').read_text(encoding='utf-8'))
+          observed = importlib.metadata.version('harbor')
+          if observed != lock['version']:
+              raise SystemExit(f"Harbor version mismatch: expected {lock['version']}, observed {observed}")
+          print(f"Harbor pin verified: {observed} @ {lock['commit']}")
+          PY
+      - name: Prepare and verify exact DeepSeek Harness wheel closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          WHEEL_DIR=tests/harbor_phase2_stock/environment/wheels
+          rm -rf "$WHEEL_DIR"
+          mkdir -p "$WHEEL_DIR" artifacts/harbor-phase2
+          DSH_VERSION="$(python -c "import json; print(json.load(open('DEEPSEEK_HARNESS.lock.json'))['sdk']['version'])")"
+          python -m pip download --only-binary=:all: --dest "$WHEEL_DIR" "deepseek-harness-sdk==${DSH_VERSION}"
+          cp suites/coding/harbor/stock_runtime_runner.py tests/harbor_phase2_stock/environment/runner.py
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          lock = json.loads(Path('DEEPSEEK_HARNESS.lock.json').read_text(encoding='utf-8'))
+          wheel_dir = Path('tests/harbor_phase2_stock/environment/wheels')
+          entries = [
+              {'filename': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'bytes': path.stat().st_size}
+              for path in sorted(wheel_dir.glob('*.whl'))
+          ]
+          if not entries:
+              raise SystemExit('DeepSeek Harness wheel closure is empty')
+          observed = {entry['filename']: entry['sha256'] for entry in entries}
+          expected = {
+              lock['sdk']['wheel']: lock['sdk']['sha256'],
+              lock['runtime']['linux_x86_64_wheel']: lock['runtime']['linux_x86_64_sha256'],
+          }
+          mismatches = {
+              name: {'expected': digest, 'observed': observed.get(name)}
+              for name, digest in expected.items() if observed.get(name) != digest
+          }
+          if mismatches:
+              raise SystemExit(f'DeepSeek Harness wheel pin mismatch: {mismatches}')
+          manifest = {
+              'scope': 'PHASE2_DSH_WHEEL_CLOSURE',
+              'lock': lock,
+              'wheels': entries,
+          }
+          Path('artifacts/harbor-phase2/DSH_WHEELS.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(f"DeepSeek Harness wheel closure verified: {len(entries)} wheels")
+          PY
+      - name: Check Docker substrate
+        run: |
+          docker version
+          docker info
+      - name: Run stock DeepSeek Harness inside Harbor with deterministic fake provider
+        env:
+          AUTOBENCH_DEEPSEEK_BASE_URL: http://fake-model:8000/v1
+          AUTOBENCH_DEEPSEEK_API_KEY: PHASE2_FAKE_KEY_DO_NOT_PERSIST
+          AUTOBENCH_DEEPSEEK_USAGE_URL: http://fake-model:8000/stats
+          AUTOBENCH_FAKE_MODEL: '1'
+        run: |
+          rm -rf artifacts/harbor-phase2/stock
+          harbor trials start \
+            -p tests/harbor_phase2_stock \
+            --agent suites.coding.harbor.stock_agent:StockDeepSeekAgent \
+            --trial-name phase2-stock-deepseek \
+            --trials-dir artifacts/harbor-phase2/stock
+      - name: Validate stock harness identity, accounting, secret boundary and patch
+        run: python tools/verify_harbor_phase2_stock.py --trials-dir artifacts/harbor-phase2/stock
+      - name: Export qualified Harbor trial into immutable CAS
+        env:
+          AUTOBENCH_DEEPSEEK_API_KEY: PHASE2_FAKE_KEY_DO_NOT_PERSIST
+        run: |
+          python tools/export_harbor_phase2_cas.py \
+            --trials-dir artifacts/harbor-phase2/stock \
+            --forbid-env AUTOBENCH_DEEPSEEK_API_KEY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase2-harbor-stock-${{ github.run_id }}
+          path: artifacts/harbor-phase2/**
+          if-no-files-found: warn
+          retention-days: 14
