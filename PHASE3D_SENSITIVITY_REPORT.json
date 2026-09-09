@@ -1,0 +1,47 @@
+{
+  "automatic_scenario_selection": false,
+  "outcome_data_used": false,
+  "paid_model_called": false,
+  "rows": [
+    {
+      "achieved_power": 0.8017344516114276,
+      "assumptions_digest": "sha256:5a01f2d83e0dd43b762bbb58952cceff90dc0f314dfcb5d431fea0a6ec26cadb",
+      "expected_discordant_pairs": 810.0,
+      "implied_resolution_rate_difference": 0.10000000000000009,
+      "max_repeat_count": 100,
+      "reachable": true,
+      "repeat_count_per_task": 81,
+      "scenario_id": "mde-10pp-conservative-discordance",
+      "target_power": 0.8,
+      "total_arm_runs": 1620,
+      "total_pair_count": 810
+    },
+    {
+      "achieved_power": 0.8073632070304838,
+      "assumptions_digest": "sha256:01f35c00573f90942b0c292d119fd36b9826bfab3bd947fd2e9c07a95120a9ce",
+      "expected_discordant_pairs": 370.0,
+      "implied_resolution_rate_difference": 0.1499999999999999,
+      "max_repeat_count": 100,
+      "reachable": true,
+      "repeat_count_per_task": 37,
+      "scenario_id": "mde-15pp-conservative-discordance",
+      "target_power": 0.8,
+      "total_arm_runs": 740,
+      "total_pair_count": 370
+    },
+    {
+      "achieved_power": 0.8202484375548218,
+      "assumptions_digest": "sha256:d5b792a3f290882d72999c465ce583cba90f1c080b65d4c480907f7785db6b60",
+      "expected_discordant_pairs": 210.0,
+      "implied_resolution_rate_difference": 0.19999999999999996,
+      "max_repeat_count": 100,
+      "reachable": true,
+      "repeat_count_per_task": 21,
+      "scenario_id": "mde-20pp-conservative-discordance",
+      "target_power": 0.8,
+      "total_arm_runs": 420,
+      "total_pair_count": 210
+    }
+  ],
+  "task_count": 10
+}
