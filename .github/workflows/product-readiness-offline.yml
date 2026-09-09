@@ -7,6 +7,7 @@ on:
       - "tools/qualify_phase3c3_real_adcp_dsh.py"
       - "tools/product_readiness.py"
       - "tools/product_readiness_campaign.py"
+      - "tools/product_readiness_linux_campaign.py"
       - "tools/product_readiness_harbor.py"
       - "product_readiness.bat"
       - "ADCP.lock.json"
@@ -45,7 +46,9 @@ jobs:
           lock = json.loads(Path('DEEPSEEK_HARNESS.lock.json').read_text(encoding='utf-8'))
           observed = importlib.metadata.version('deepseek-harness-sdk')
           assert observed == lock['sdk']['version'], (observed, lock['sdk']['version'])
-          print('DeepSeek Harness SDK pin:', observed)
+          runtime = importlib.metadata.version('deepseek-harness-runtime-bin')
+          assert runtime == observed, (runtime, observed)
+          print('DeepSeek Harness SDK/runtime pin:', observed)
           PY
       - name: Compile product-readiness entrypoints
         run: >-
@@ -54,6 +57,7 @@ jobs:
           tools/qualify_phase3c3_real_adcp_dsh.py
           tools/product_readiness.py
           tools/product_readiness_campaign.py
+          tools/product_readiness_linux_campaign.py
           tools/product_readiness_harbor.py
       - name: Exercise shipping DeepSeek Harness subprocess over real HTTP/SSE
         shell: python
