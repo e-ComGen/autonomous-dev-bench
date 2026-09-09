@@ -8,6 +8,7 @@
     "license": "MIT",
     "encoding_file": "encoding/encoding_dsv4.py",
     "encoding_test_file": "encoding/test_encoding_dsv4.py",
+    "model_config_file": "config.json",
     "tokenizer_file": "tokenizer.json",
     "tokenizer_config_file": "tokenizer_config.json",
     "golden_cases": [
