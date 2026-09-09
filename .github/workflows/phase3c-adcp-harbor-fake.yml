@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "ADCP.lock.json"
       - "suites/coding/adcp_contract.py"
       - "suites/coding/harbor/adcp_agent.py"
       - "tests/core/test_adcp_harbor_contract.py"
@@ -82,12 +83,16 @@ jobs:
           from pathlib import Path
           p = Path('artifacts/phase3c-adcp/PHASE3C_ADCP_FAKE_HARBOR.json')
           evidence = json.loads(p.read_text(encoding='utf-8'))
+          lock = json.loads(Path('ADCP.lock.json').read_text(encoding='utf-8'))
           assert evidence['status'] == 'PASS'
           assert evidence['fake_runtime'] is True
           assert evidence['private_runtime_loaded'] is False
           assert evidence['paid_model_called'] is False
           assert evidence['production_ready'] is False
           assert evidence['production_blocker'] == 'PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED'
+          assert lock['fake_process_boundary_status'] == 'PASS'
+          assert lock['private_pinned_runtime_qualification_status'] == 'NOT_RUN'
+          assert lock['paid_ready'] is False
 
       - uses: actions/upload-artifact@v4
         if: always()
