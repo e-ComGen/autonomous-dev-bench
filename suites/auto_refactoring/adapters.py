@@ -4,13 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import importlib
 import json
-import os
 from pathlib import Path
-import subprocess
 import time
 from typing import Any, Callable, Mapping, Sequence
 
-from benchmark_core.execution import CommandSpec, ExecutionResult
+from benchmark_core.execution import CommandSpec, ExecutionResult, ProcessRunner
 
 from .suite import ADAPTER_ID, RefactoringAdapterResult, RefactoringDecision
 
@@ -160,6 +158,60 @@ def _complete_design_form_argv(
     return tuple(values)
 
 
+def _candidate_snapshot(invocation: object) -> object:
+    if isinstance(invocation, Mapping):
+        return invocation.get("candidate_snapshot", invocation)
+    return getattr(invocation, "candidate_snapshot", invocation)
+
+
+def _build_command_spec(
+    *,
+    command_template: tuple[str, ...],
+    timeout_seconds: float,
+    environment: Mapping[str, str],
+    root: Path,
+    candidate_snapshot: object,
+) -> CommandSpec:
+    scope = str(candidate_snapshot.get("affected_scope", ".")) if isinstance(candidate_snapshot, Mapping) else "."
+    command = tuple(
+        token.replace("{repository}", str(root)).replace("{scope}", scope)
+        for token in command_template
+    )
+    design_analyze = _is_design_form_analyze(command)
+    if design_analyze:
+        command = _complete_design_form_argv(command, root, scope)
+    stdin = None if design_analyze else json.dumps({"candidate_snapshot": candidate_snapshot}, default=str)
+    return CommandSpec(
+        command,
+        timeout_seconds,
+        str(root),
+        environment=environment,
+        stdin=stdin,
+    )
+
+
+def _decode_execution(result: ExecutionResult) -> RefactoringAdapterResult:
+    if result.timed_out:
+        return normalize_production_result(
+            None,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            elapsed=result.wall_time_seconds,
+            process_status="TIMEOUT",
+        )
+    try:
+        raw: object = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        raw = {"unparsed_stdout": result.stdout, "malformed_output": True}
+    return normalize_production_result(
+        raw,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        elapsed=result.wall_time_seconds,
+        process_status=result.returncode,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProductionCliAdapter:
     """Invoke the real CLI in a subprocess without trusting its self-verdict.
@@ -191,55 +243,19 @@ class ProductionCliAdapter:
             raise ValueError("environment must contain string pairs")
         object.__setattr__(self, "environment", environment)
 
+    def _command_spec(self, root: Path, candidate_snapshot: object) -> CommandSpec:
+        return _build_command_spec(
+            command_template=self.command,
+            timeout_seconds=self.timeout_seconds,
+            environment=self.environment,
+            root=root,
+            candidate_snapshot=candidate_snapshot,
+        )
+
     def run(self, repository: str | Path, candidate_snapshot: object) -> RefactoringAdapterResult:
         root = Path(repository).resolve()
-        scope = "."
-        if isinstance(candidate_snapshot, Mapping):
-            scope = str(candidate_snapshot.get("affected_scope", "."))
-        command = tuple(
-            token.replace("{repository}", str(root)).replace("{scope}", scope)
-            for token in self.command
-        )
-        design_analyze = _is_design_form_analyze(command)
-        if design_analyze:
-            command = _complete_design_form_argv(command, root, scope)
-        request = None if design_analyze else json.dumps(
-            {"candidate_snapshot": candidate_snapshot}, default=str
-        )
-        started = time.monotonic()
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=root,
-                env={**os.environ, **self.environment},
-                input=request,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=self.timeout_seconds,
-                check=False,
-                shell=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return normalize_production_result(
-                None,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or "",
-                elapsed=time.monotonic() - started,
-                process_status="TIMEOUT",
-            )
-        elapsed = time.monotonic() - started
-        try:
-            raw: object = json.loads(completed.stdout)
-        except (json.JSONDecodeError, TypeError):
-            raw = {"unparsed_stdout": completed.stdout, "malformed_output": True}
-        return normalize_production_result(
-            raw,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            elapsed=elapsed,
-            process_status=completed.returncode,
-        )
+        execution = ProcessRunner().run(self._command_spec(root, candidate_snapshot))
+        return _decode_execution(execution)
 
     def validate_system_binding(self, system: object, implementation_path: Path, executable_path: Path) -> bool:
         return (
@@ -252,38 +268,19 @@ class ProductionCliAdapter:
         )
 
     def prepare_command(self, invocation: object, run_context: object) -> CommandSpec:
-        payload = invocation if isinstance(invocation, Mapping) else None
-        candidate = payload.get("candidate_snapshot", payload) if payload is not None else getattr(invocation, "candidate_snapshot", invocation)
         root = Path(getattr(run_context, "workspace")).resolve()
-        scope = str(candidate.get("affected_scope", ".")) if isinstance(candidate, Mapping) else "."
-        command = tuple(token.replace("{repository}", str(root)).replace("{scope}", scope) for token in self.command)
-        design_analyze = _is_design_form_analyze(command)
-        if design_analyze:
-            command = _complete_design_form_argv(command, root, scope)
-        stdin = None if design_analyze else json.dumps({"candidate_snapshot": candidate}, default=str)
-        return CommandSpec(command, self.timeout_seconds, str(root), environment=self.environment, stdin=stdin)
+        return self._command_spec(root, _candidate_snapshot(invocation))
 
     @staticmethod
     def parse_execution(result: ExecutionResult):
-        if result.timed_out:
-            return normalize_production_result(None, stdout=result.stdout, stderr=result.stderr,
-                                               elapsed=result.wall_time_seconds, process_status="TIMEOUT").observation()
-        try:
-            raw: object = json.loads(result.stdout)
-        except (json.JSONDecodeError, TypeError):
-            raw = {"unparsed_stdout": result.stdout, "malformed_output": True}
-        return normalize_production_result(raw, stdout=result.stdout, stderr=result.stderr,
-                                           elapsed=result.wall_time_seconds,
-                                           process_status=result.returncode).observation()
+        return _decode_execution(result).observation()
 
     def invoke(self, invocation: object, run_context: object):
         """Implement the neutral benchmark SystemAdapter protocol."""
-        payload = invocation if isinstance(invocation, Mapping) else None
-        candidate = payload.get("candidate_snapshot", payload) if payload is not None else getattr(invocation, "candidate_snapshot", invocation)
         workspace = getattr(run_context, "workspace", None)
         if workspace is None:
             raise ValueError("run context does not provide an isolated workspace")
-        return self.run(workspace, candidate).observation()
+        return self.run(workspace, _candidate_snapshot(invocation)).observation()
 
 
 @dataclass(frozen=True, slots=True)
