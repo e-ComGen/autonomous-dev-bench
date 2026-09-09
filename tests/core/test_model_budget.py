@@ -25,7 +25,7 @@ def _budget(**overrides: int) -> BudgetManifest:
 
 
 def test_reservation_enforces_primary_total_budget_before_dispatch() -> None:
-    gateway = ModelBudgetGateway(_budget())
+    gateway = ModelBudgetGateway(_budget(input_token_cap=200, output_token_cap=200))
     first = gateway.reserve(input_tokens=60, max_output_tokens=30)
 
     with pytest.raises(BudgetExceeded, match="total_model_token_cap"):
