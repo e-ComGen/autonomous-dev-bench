@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_FIRST_STOCK_VS_ADCP_PAIRED_EXPERIMENT",
+  "status": "DRAFT_BLOCKED",
+  "scientific_question": "Does ADCP orchestration improve software-task resolution relative to the same DeepSeek model running as the stock DeepSeek coding agent under the same model-token budget?",
+  "treatment": {
+    "arm_a": {
+      "name": "stock",
+      "implementation": "stock_deepseek_harness",
+      "commit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d"
+    },
+    "arm_b": {
+      "name": "adcp",
+      "implementation": "adcp_zone_development",
+      "commit": "285702063815280398b95ba8696566259c8b5b34",
+      "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+      "integration": "existing-v2-runtime-role-ports"
+    },
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek-official",
+    "intended_difference": "agent_orchestration_only"
+  },
+  "corpus": {
+    "dataset": "verified",
+    "official_swebench_version": "5.0.2",
+    "task_repo": "SWE-bench/swe-bench-tasks",
+    "task_repo_commit": "3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d",
+    "source_manifest": "migration/swebench_v5_verified_parity.json",
+    "tasks": [
+      "astropy__astropy-12907",
+      "django__django-10880",
+      "matplotlib__matplotlib-13989",
+      "pallets__flask-5014",
+      "psf__requests-1142",
+      "pydata__xarray-2905",
+      "pylint-dev__pylint-6528",
+      "pytest-dev__pytest-10081",
+      "scikit-learn__scikit-learn-10297",
+      "sympy__sympy-20590"
+    ]
+  },
+  "execution": {
+    "substrate": "harbor",
+    "harbor_version": "0.22.0",
+    "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "environment_provider": "docker",
+    "official_grading_authority": "swebench-v5",
+    "pair_order_algorithm": "sha256-parity-v1",
+    "master_seed": 20260909,
+    "pair_seed_algorithm": "sha256-master-task-repeat-v1",
+    "pair_id_template": "phase3d-{task_id}-r{repeat_index}",
+    "repeat_count_per_task": null,
+    "workspace_policy": "fresh_independent_environment_per_arm",
+    "cross_arm_mutable_state_reuse": false
+  },
+  "budget": {
+    "primary_fairness_measure": "total_model_tokens",
+    "total_model_token_cap_per_arm": null,
+    "input_token_cap_per_arm": null,
+    "output_token_cap_per_arm": null,
+    "max_requests_per_arm": null,
+    "wall_time_seconds_per_arm": null,
+    "patch_byte_cap_per_arm": null,
+    "secondary_accounting": [
+      "input_tokens",
+      "output_tokens",
+      "reasoning_tokens",
+      "cache_tokens",
+      "requests",
+      "cost_usd",
+      "wall_time_ms"
+    ]
+  },
+  "outcomes": {
+    "primary_endpoint": "official_swebench_v5_resolved",
+    "primary_estimand": "paired_difference_in_resolution_rate_adcp_minus_stock",
+    "secondary_endpoints": [
+      "total_model_tokens",
+      "requests",
+      "cost_usd",
+      "wall_time_ms",
+      "patch_bytes",
+      "repair_count"
+    ],
+    "winner_rule": "No winner is declared from infrastructure qualification. Paid paired outcomes must be reported task-by-task and in aggregate after the precommitted run completes."
+  },
+  "analysis": {
+    "unit": "task_repeat_pair",
+    "paired": true,
+    "report_discordant_pairs": true,
+    "report_per_task_results": true,
+    "report_aggregate_resolution_rate": true,
+    "report_primary_paired_effect": true,
+    "no_universal_weighted_score": true,
+    "outcome_blind_plan_changes_required": true
+  },
+  "exclusions": {
+    "allowed": [
+      "pre_dispatch_infrastructure_failure",
+      "official_grader_infrastructure_failure",
+      "experiment_accounting_unknown"
+    ],
+    "forbidden": [
+      "exclude_because_arm_failed_task",
+      "exclude_because_patch_quality_is_low",
+      "exclude_because_result_hurts_hypothesis"
+    ],
+    "replacement_policy": "Any excluded pair must retain evidence and may only be rerun under the same immutable pair identity inputs except for an incremented attempt identity."
+  },
+  "stopping": {
+    "rule": "fixed_precommitted_pairs_only",
+    "interim_outcome_based_stopping": false,
+    "required_completed_pairs": null
+  },
+  "design_paid_ready": false,
+  "design_blockers": [
+    "EXPERIMENT_PLAN_NOT_LOCKED",
+    "REPEAT_COUNT_NOT_PRECOMMITTED",
+    "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
+    "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED"
+  ],
+  "external_admission_gates": [
+    "DEEPSEEK_V4_ESTIMATOR.lock.json",
+    "ADCP.lock.json",
+    "DEEPSEEK_HARNESS.lock.json"
+  ],
+  "paid_paired_ab": "NOT_RUN",
+  "winner": "UNKNOWN"
+}

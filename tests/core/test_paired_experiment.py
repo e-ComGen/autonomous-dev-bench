@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+from pathlib import Path
+import shutil
 
 import pytest
 
@@ -26,13 +28,23 @@ from benchmark_core.paired_experiment import (
 )
 
 
+ROOT = Path(__file__).resolve().parents[2]
 SHA = "sha256:" + "a" * 64
 TASK_COMMIT = "1" * 40
 STOCK_COMMIT = "a66e4702047846cdaa10c66c9d3df3951f5ea70d"
 ADCP_COMMIT = "285702063815280398b95ba8696566259c8b5b34"
+ADMISSION_SOURCES = (
+    "PHASE3D_EXPERIMENT_PLAN.json",
+    "migration/swebench_v5_verified_parity.json",
+    "HARBOR.lock.json",
+    "DEEPSEEK_HARNESS.lock.json",
+    "ADCP.lock.json",
+    "DEEPSEEK_V4_ESTIMATOR.lock.json",
+)
 
 
 def _plan(*, seed: int = 17) -> PairedExperimentPlan:
+    """Generic plan used only by controller/fairness dry-run tests."""
     return PairedExperimentPlan(
         pair_id="phase3d-verified-pair-0",
         task=TaskManifest(
@@ -78,26 +90,109 @@ def _plan(*, seed: int = 17) -> PairedExperimentPlan:
     )
 
 
-def _write_locks(tmp_path, *, ready: bool) -> None:
-    estimator = {
-        "model_route": "deepseek-v4-flash",
-        "live_provider_prompt_usage_parity": ready,
-        "paid_ready": ready,
-    }
-    adcp = {
-        "model_route": "deepseek-v4-flash",
-        "provider_route": "deepseek-official",
-        "fake_process_boundary_status": "PASS",
-        "private_pinned_runtime_qualification_status": "PASS" if ready else "NOT_RUN",
-        "paid_ready": ready,
-    }
-    stock = {
-        "model": "deepseek-v4-flash",
-        "provider": "deepseek-official",
-    }
-    (tmp_path / "DEEPSEEK_V4_ESTIMATOR.lock.json").write_text(json.dumps(estimator), encoding="utf-8")
-    (tmp_path / "ADCP.lock.json").write_text(json.dumps(adcp), encoding="utf-8")
-    (tmp_path / "DEEPSEEK_HARNESS.lock.json").write_text(json.dumps(stock), encoding="utf-8")
+def _copy_admission_sources(tmp_path: Path) -> None:
+    for relative in ADMISSION_SOURCES:
+        source = ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+
+def _write_json(path: Path, value: dict[str, object]) -> None:
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_locks(tmp_path: Path, *, ready: bool) -> None:
+    """Create a repository-shaped admission fixture from accepted real locks."""
+    _copy_admission_sources(tmp_path)
+
+    estimator_path = tmp_path / "DEEPSEEK_V4_ESTIMATOR.lock.json"
+    estimator = json.loads(estimator_path.read_text(encoding="utf-8"))
+    estimator["live_provider_prompt_usage_parity"] = ready
+    estimator["paid_ready"] = ready
+    estimator["production_blocker"] = None if ready else "LIVE_PROVIDER_PROMPT_USAGE_PARITY_NOT_RUN"
+    _write_json(estimator_path, estimator)
+
+    adcp_path = tmp_path / "ADCP.lock.json"
+    adcp = json.loads(adcp_path.read_text(encoding="utf-8"))
+    adcp["private_pinned_runtime_qualification_status"] = "PASS" if ready else "NOT_RUN"
+    adcp["paid_ready"] = ready
+    adcp["production_blocker"] = None if ready else "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED"
+    _write_json(adcp_path, adcp)
+
+    if ready:
+        plan_path = tmp_path / "PHASE3D_EXPERIMENT_PLAN.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["status"] = "LOCKED"
+        plan["execution"]["repeat_count_per_task"] = 2
+        plan["budget"].update(
+            total_model_token_cap_per_arm=120000,
+            input_token_cap_per_arm=100000,
+            output_token_cap_per_arm=50000,
+            max_requests_per_arm=64,
+            wall_time_seconds_per_arm=3600,
+            patch_byte_cap_per_arm=1000000,
+        )
+        plan["stopping"]["required_completed_pairs"] = 20
+        plan["design_paid_ready"] = True
+        plan["design_blockers"] = []
+        _write_json(plan_path, plan)
+
+
+def _ready_plan(admission: PaidAdmissionSnapshot, *, task_id: str = "psf__requests-1142", repeat_index: int = 0) -> PairedExperimentPlan:
+    design = admission.experiment_design
+    assert design.design_paid_ready
+    assert design.input_token_cap_per_arm is not None
+    assert design.output_token_cap_per_arm is not None
+    assert design.total_model_token_cap_per_arm is not None
+    assert design.max_requests_per_arm is not None
+    assert design.wall_time_seconds_per_arm is not None
+    assert design.patch_byte_cap_per_arm is not None
+
+    return PairedExperimentPlan(
+        pair_id=design.expected_pair_id(task_id, repeat_index),
+        task=TaskManifest(
+            dataset="verified",
+            dataset_version=design.official_swebench_version,
+            task_id=task_id,
+            task_repo_commit=design.task_repo_commit,
+            environment_image_digest=SHA,
+            evaluator_version=design.official_swebench_version,
+        ),
+        stock_agent=AgentManifest(
+            implementation="stock_deepseek_harness",
+            commit=design.stock_commit,
+            configuration={"profile": "sdk"},
+        ),
+        adcp_agent=AgentManifest(
+            implementation="adcp_zone_development",
+            commit=design.adcp_commit,
+            configuration={"runtime": "assured_runtime"},
+        ),
+        model=ModelManifest(
+            identifier=design.model,
+            provider_route=design.provider,
+            decoding={"temperature": 0},
+        ),
+        budget=BudgetManifest(
+            input_token_cap=design.input_token_cap_per_arm,
+            output_token_cap=design.output_token_cap_per_arm,
+            total_model_token_cap=design.total_model_token_cap_per_arm,
+            max_requests=design.max_requests_per_arm,
+            wall_time_seconds=design.wall_time_seconds_per_arm,
+            patch_byte_cap=design.patch_byte_cap_per_arm,
+        ),
+        execution=ExecutionManifest(
+            engine="harbor",
+            engine_version=design.harbor_version,
+            provider=design.environment_provider,
+            network_policy="task_policy",
+            resource_policy={"fixture": "same-both-arms"},
+        ),
+        repeat_index=repeat_index,
+        seed=design.expected_seed(task_id, repeat_index),
+        order_algorithm=design.pair_order_algorithm,
+    )
 
 
 class RecordingExecutor:
@@ -157,28 +252,53 @@ def test_fairness_rejects_budget_drift_between_atomic_arms() -> None:
         require_causal_pair(stock, adcp)
 
 
-def test_repository_admission_snapshot_fails_closed_until_all_paid_gates_pass(tmp_path) -> None:
+def test_repository_admission_snapshot_fails_closed_until_all_paid_gates_pass(tmp_path: Path) -> None:
     _write_locks(tmp_path, ready=False)
     admission = PaidAdmissionSnapshot.from_repository(tmp_path)
 
     assert not admission.paid_ready
+    assert "EXPERIMENT_PLAN_NOT_LOCKED" in admission.blockers
+    assert "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED" in admission.blockers
     assert "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS" in admission.blockers
     assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" in admission.blockers
     with pytest.raises(PaidExperimentBlocked):
         admission.require_paid_ready(_plan())
 
 
-def test_repository_admission_snapshot_binds_lock_content_and_accepts_complete_evidence(tmp_path) -> None:
+def test_repository_admission_snapshot_binds_design_and_accepts_complete_evidence(tmp_path: Path) -> None:
     _write_locks(tmp_path, ready=True)
     admission = PaidAdmissionSnapshot.from_repository(tmp_path)
+    plan = _ready_plan(admission)
 
     assert admission.paid_ready
     assert admission.blockers == ()
+    assert admission.experiment_design.design_paid_ready
+    assert str(admission.experiment_design.plan_digest).startswith("sha256:")
     assert str(admission.estimator_lock_digest).startswith("sha256:")
-    admission.require_paid_ready(_plan())
+    admission.require_paid_ready(plan)
 
 
-def test_paid_controller_checks_admission_before_invoking_any_executor(tmp_path) -> None:
+def test_ready_admission_rejects_runtime_pair_budget_or_seed_drift(tmp_path: Path) -> None:
+    _write_locks(tmp_path, ready=True)
+    admission = PaidAdmissionSnapshot.from_repository(tmp_path)
+    plan = _ready_plan(admission)
+
+    with pytest.raises(PaidExperimentBlocked, match="seed"):
+        admission.require_paid_ready(replace(plan, seed=plan.seed + 1))
+
+    bad_budget = BudgetManifest(
+        input_token_cap=plan.budget.input_token_cap,
+        output_token_cap=plan.budget.output_token_cap,
+        total_model_token_cap=plan.budget.total_model_token_cap - 1,
+        max_requests=plan.budget.max_requests,
+        wall_time_seconds=plan.budget.wall_time_seconds,
+        patch_byte_cap=plan.budget.patch_byte_cap,
+    )
+    with pytest.raises(PaidExperimentBlocked, match="budget"):
+        admission.require_paid_ready(replace(plan, budget=bad_budget))
+
+
+def test_paid_controller_checks_admission_before_invoking_any_executor(tmp_path: Path) -> None:
     _write_locks(tmp_path, ready=False)
     admission = PaidAdmissionSnapshot.from_repository(tmp_path)
     stock = RecordingExecutor(model_called=True)
@@ -241,10 +361,10 @@ def test_executor_receipt_must_bind_exact_planned_manifest() -> None:
         )
 
 
-def test_paid_run_with_complete_admission_records_admission_identity(tmp_path) -> None:
+def test_paid_run_with_complete_admission_records_admission_identity(tmp_path: Path) -> None:
     _write_locks(tmp_path, ready=True)
     admission = PaidAdmissionSnapshot.from_repository(tmp_path)
-    plan = _plan(seed=44)
+    plan = _ready_plan(admission, repeat_index=1)
     stock = RecordingExecutor(model_called=True)
     adcp = RecordingExecutor(model_called=True)
 
