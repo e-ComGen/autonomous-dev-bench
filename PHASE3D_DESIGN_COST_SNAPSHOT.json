@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D7_INFORMATIONAL_COST_SNAPSHOT",
+  "checked_at": "2026-09-09",
+  "model": "deepseek-v4-flash",
+  "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing",
+  "currency": "USD",
+  "per_million_tokens": {
+    "off_peak": {
+      "cache_miss_input": 0.22,
+      "output": 0.66
+    },
+    "peak": {
+      "cache_miss_input": 0.44,
+      "output": 1.32
+    }
+  },
+  "selected_design_cap_based_envelope": {
+    "arm_runs": 740,
+    "total_model_token_ceiling": 193986560,
+    "maximum_cost_per_arm_off_peak": 0.08650752,
+    "maximum_cost_per_arm_peak": 0.17301504,
+    "maximum_campaign_cost_off_peak": 64.0155648,
+    "maximum_campaign_cost_peak": 128.0311296
+  },
+  "notes": [
+    "Informational only; this is not a grading, stopping, or admission authority.",
+    "The estimate assumes the full 65536 output-token component cap is consumed and all remaining total-token budget is cache-miss input because output is more expensive than input.",
+    "Actual cost may be lower; prices may change before execution."
+  ]
+}

@@ -256,11 +256,14 @@ def test_repository_admission_snapshot_fails_closed_until_all_paid_gates_pass(tm
     _write_locks(tmp_path, ready=False)
     admission = PaidAdmissionSnapshot.from_repository(tmp_path)
 
+    assert admission.experiment_design.design_paid_ready is True
     assert not admission.paid_ready
-    assert "EXPERIMENT_PLAN_NOT_LOCKED" in admission.blockers
-    assert "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED" in admission.blockers
-    assert "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS" in admission.blockers
-    assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" in admission.blockers
+    assert admission.blockers == (
+        "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS",
+        "DEEPSEEK_ESTIMATOR_NOT_PAID_READY",
+        "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS",
+        "ADCP_NOT_PAID_READY",
+    )
     with pytest.raises(PaidExperimentBlocked):
         admission.require_paid_ready(_plan())
 

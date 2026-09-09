@@ -142,6 +142,12 @@ def exact_paired_power(total_pairs: int, assumptions: CalibrationAssumptions) ->
     q = assumptions.expected_discordant_rate
     p = assumptions.adcp_win_probability_given_discordance
 
+    # When q=1, D is deterministically total_pairs. Skipping impossible
+    # discordant counts preserves the exact calculation while avoiding the
+    # quadratic family of conditional tests needed by the general mixture.
+    if q == 1.0:
+        return _conditional_rejection_probability(total_pairs, p, assumptions.alpha)
+
     conditional_reject = tuple(
         _conditional_rejection_probability(discordant, p, assumptions.alpha)
         for discordant in range(total_pairs + 1)

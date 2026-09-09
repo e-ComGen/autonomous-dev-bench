@@ -111,12 +111,21 @@ def main() -> int:
     parser.add_argument("scenarios", type=Path)
     parser.add_argument("decision", type=Path)
     parser.add_argument("--root", type=Path, default=Path("."))
+    parser.add_argument(
+        "--plan",
+        type=Path,
+        help=(
+            "explicit DRAFT_BLOCKED plan input; defaults to PHASE3D_EXPERIMENT_PLAN.json "
+            "under --root"
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
 
     root = args.root.resolve()
     output_dir = args.output_dir.resolve()
-    plan = _read_object(root / "PHASE3D_EXPERIMENT_PLAN.json", "experiment plan")
+    plan_path = args.plan.resolve() if args.plan is not None else root / "PHASE3D_EXPERIMENT_PLAN.json"
+    plan = _read_object(plan_path, "experiment plan")
     scenarios_raw = _read_object(args.scenarios.resolve(), "sensitivity scenarios")
     decision_raw = _read_object(args.decision.resolve(), "design decision")
 
