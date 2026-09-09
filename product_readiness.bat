@@ -83,12 +83,30 @@ set "VPY=%VENV%\Scripts\python.exe"
 
 echo [setup] Installing exact benchmark verification dependencies...
 "%VPY%" -m pip install --disable-pip-version-check -U pip setuptools wheel
-if errorlevel 1 goto FAIL_SETUP
+if errorlevel 1 (
+  echo [FAIL] pip bootstrap failed.
+  pause
+  exit /b 1
+)
 "%VPY%" -m pip install --disable-pip-version-check -e "%REPO%[dev,deepseek-estimator]"
-if errorlevel 1 goto FAIL_SETUP
+if errorlevel 1 (
+  echo [FAIL] benchmark dependency installation failed.
+  pause
+  exit /b 1
+)
+set "DSH_VERSION="
 for /f "delims=" %%V in ('"%VPY%" -c "import json; print(json.load(open(r'%REPO%\DEEPSEEK_HARNESS.lock.json', encoding='utf-8'))['sdk']['version'])"') do set "DSH_VERSION=%%V"
+if not defined DSH_VERSION (
+  echo [FAIL] Could not read the pinned DeepSeek Harness SDK version.
+  pause
+  exit /b 1
+)
 "%VPY%" -m pip install --disable-pip-version-check "deepseek-harness-sdk==%DSH_VERSION%"
-if errorlevel 1 goto FAIL_SETUP
+if errorlevel 1 (
+  echo [FAIL] DeepSeek Harness SDK installation failed.
+  pause
+  exit /b 1
+)
 
 if not defined AUTOBENCH_DEEPSEEK_API_KEY if defined DEEPSEEK_API_KEY set "AUTOBENCH_DEEPSEEK_API_KEY=%DEEPSEEK_API_KEY%"
 
@@ -112,8 +130,3 @@ if "%RESULT%"=="0" (
 echo.
 pause
 exit /b %RESULT%
-
-:FAIL_SETUP
-echo [FAIL] Dependency setup failed.
-pause
-exit /b 1
