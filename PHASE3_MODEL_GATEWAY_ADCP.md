@@ -41,6 +41,12 @@ Properties:
 
 This component is neutral and must be shared by both arms.
 
+Accepted CI run `34303270164` passes:
+
+- firewall self-test;
+- Ubuntu Python 3.11 / 3.12 / 3.13 pytest + build;
+- Windows Python 3.11 / 3.12 / 3.13 pytest + build.
+
 ## Phase 3B — cross-process model transport
 
 **NOT YET ACCEPTED.**
@@ -82,7 +88,7 @@ Only after 3A–3C pass may the benchmark execute paid paired trials. Official S
 PHASE0_1_CLEAN_MAIN: PASS
 PHASE2_HARBOR_SUBSTRATE: PASS
 PHASE2_WINDOWS_PHYSICAL_HOST: PASS
-PHASE3A_MODEL_BUDGET_AUTHORITY: IMPLEMENTED / CI_PENDING
+PHASE3A_MODEL_BUDGET_AUTHORITY: PASS
 PHASE3B_SHARED_CROSS_PROCESS_MODEL_TRANSPORT: NOT_IMPLEMENTED
 PHASE3C_ADCP_HARBOR_ADAPTER: NOT_IMPLEMENTED
 PAID_PAIRED_AB: NOT_RUN
