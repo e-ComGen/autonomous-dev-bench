@@ -21,7 +21,22 @@
     "model_calls_via_shared_budget_proxy": true,
     "upstream_provider_credential_visible_to_arm": false
   },
-  "fake_process_boundary_status": "PENDING",
+  "fake_process_boundary_status": "PASS",
+  "fake_process_boundary": {
+    "workflow_run_id": 34348676041,
+    "head_sha": "d83f3b79e7c1d7bbe2f344dc4fd6d025111924c3",
+    "artifact_id": 10102784371,
+    "artifact_digest": "sha256:aade21169e62335e2e407bd825e3ec7be7d80dc98b3f0d41432b9cae4dce2af5",
+    "harbor_version": "0.22.0",
+    "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "patch_sha256": "6f66e6683575a4504f25c0a3c8b4356d62eb167d807648cb0a7370f5e5a5c622",
+    "patch_bytes": 162,
+    "repair_count": 1,
+    "paid_model_called": false,
+    "private_runtime_loaded": false,
+    "production_ready": false
+  },
   "private_pinned_runtime_qualification_status": "NOT_RUN",
+  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED",
   "paid_ready": false
 }
