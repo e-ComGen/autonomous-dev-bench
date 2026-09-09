@@ -19,6 +19,14 @@ from .experiment_manifest import (
 from .identity import CanonicalModel, CommitPin, FrozenDict, Sha256Digest, VersionIdentity, canonical_json
 from .isolation import SandboxTrustStore
 from .manifest import load_project, load_scenario, load_suite, load_task
+from .model_budget import (
+    BudgetAccountingError,
+    BudgetExceeded,
+    ModelBudgetGateway,
+    ModelBudgetSnapshot,
+    ModelCallReservation,
+    ModelUsage,
+)
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
@@ -31,6 +39,8 @@ from .task import TaskSpec
 __all__ = [
     "AgentManifest",
     "BenchmarkSuite",
+    "BudgetAccountingError",
+    "BudgetExceeded",
     "BudgetManifest",
     "CanonicalModel",
     "CommitPin",
@@ -43,7 +53,11 @@ __all__ = [
     "FrozenDict",
     "HardGate",
     "InvalidExperiment",
+    "ModelBudgetGateway",
+    "ModelBudgetSnapshot",
+    "ModelCallReservation",
     "ModelManifest",
+    "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
     "ProjectEnvironmentBuilder",
