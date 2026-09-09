@@ -1,0 +1,39 @@
+{
+  "decision": {
+    "aggregate_arm_wall_time_budget_seconds": 444000,
+    "aggregate_input_token_ceiling": 193986560,
+    "aggregate_output_token_ceiling": 48496640,
+    "aggregate_patch_byte_ceiling": 193986560,
+    "aggregate_request_ceiling": 11840,
+    "aggregate_total_model_token_ceiling": 193986560,
+    "automatic_scenario_selection": false,
+    "candidate_plan_digest": {
+      "value": "sha256:725944356ef66c8bd0e473bfe19016b06b7883b9c0ef72cf8135850b01864d97"
+    },
+    "decision_reference": "PHASE3D_DESIGN_RATIONALE.md#selected-design",
+    "input_plan_digest": {
+      "value": "sha256:710abee3b025bab46358400c0d5a702e1c3fceb5037c3df861a061053977786e"
+    },
+    "outcome_data_used": false,
+    "paid_model_called": false,
+    "repeat_count_per_task": 37,
+    "scenario_set_digest": {
+      "value": "sha256:098505aa598c5309977951225b9fe75b23b4ffb178f664c14bf1831cb0c92a4c"
+    },
+    "scope": "PHASE3D6_EXPERIMENT_DESIGN_DECISION",
+    "selected_assumptions_digest": {
+      "value": "sha256:01f35c00573f90942b0c292d119fd36b9826bfab3bd947fd2e9c07a95120a9ce"
+    },
+    "selected_scenario_id": "mde-15pp-conservative-discordance",
+    "sensitivity_report_digest": {
+      "value": "sha256:a4d85a3f655bbbd8469155f60658603178ad521a92983b99a2c36819b722e330"
+    },
+    "task_count": 10,
+    "total_arm_runs": 740,
+    "total_pair_count": 370
+  },
+  "schedule_identity": {
+    "value": "sha256:50a62fab288731caca4e1667155600f0de19dadcf5123d106d2ade7c53d23e54"
+  },
+  "schedule_pair_count": 370
+}
