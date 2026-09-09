@@ -1,0 +1,43 @@
+services:
+  main:
+    depends_on:
+      fake-upstream:
+        condition: service_healthy
+      model-gateway:
+        condition: service_healthy
+
+  fake-upstream:
+    build:
+      context: ./fake-upstream
+    environment:
+      FAKE_UPSTREAM_API_KEY: ${PHASE3_UPSTREAM_API_KEY}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
+      interval: 1s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  model-gateway:
+    build:
+      context: ./model-gateway
+    depends_on:
+      fake-upstream:
+        condition: service_healthy
+    environment:
+      GATEWAY_CLIENT_TOKEN: ${PHASE3_GATEWAY_CLIENT_TOKEN}
+      UPSTREAM_API_KEY: ${PHASE3_UPSTREAM_API_KEY}
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,urllib.request; r=urllib.request.Request('http://localhost:8000/__autobench/usage',headers={'Authorization':'Bearer '+os.environ['GATEWAY_CLIENT_TOKEN']}); urllib.request.urlopen(r,timeout=2).read()"
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s

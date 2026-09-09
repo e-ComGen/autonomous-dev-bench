@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "repository": "e-ComGen/autonomous-dev-control-plane",
+  "commit": "285702063815280398b95ba8696566259c8b5b34",
+  "runtime_entrypoint": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+  "integration": "existing-v2-runtime-role-ports",
+  "role": "orchestrated_arm_runtime",
+  "model_route": "shared_budget_gateway",
+  "benchmark_owns_orchestration": false
+}

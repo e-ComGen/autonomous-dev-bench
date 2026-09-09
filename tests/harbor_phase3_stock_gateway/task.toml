@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "autonomous-dev-bench/phase3-stock-shared-gateway"
+version = "1.0.0"
+authors = []
+keywords = ["harbor", "phase3", "stock", "model-gateway"]
+
+[metadata]
+difficulty = "trivial"
+category = "infrastructure"
+tags = ["phase3", "fake-upstream", "stock-harness", "shared-budget-gateway"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 300.0
+
+[environment]
+build_timeout_sec = 900.0
+cpus = 3
+memory_mb = 3072
+storage_mb = 6144
+gpus = 0
+mcp_servers = []
+
+[verifier.env]
+
+[solution.env]

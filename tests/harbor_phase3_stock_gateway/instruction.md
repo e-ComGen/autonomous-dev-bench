@@ -1,0 +1,1 @@
+Create `/workspace/stock-harness.txt` containing exactly `created by stock deepseek harness` followed by one newline. Use the normal stock DeepSeek Harness tool path. This qualification uses a deterministic fake upstream only; do not make any other repository changes.

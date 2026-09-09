@@ -18,6 +18,8 @@ class FakeEnvironment:
         self.current_untracked = ("generated/preexisting.txt",)
         self.commands = []
         self.tracked_dirty = False
+        self.ancestry_valid = True
+        self.baseline_diff = ""
 
     async def exec(self, command, **kwargs):
         self.commands.append((command, kwargs.get("cwd")))
@@ -25,6 +27,10 @@ class FakeEnvironment:
             return Result(return_code=1 if self.tracked_dirty else 0)
         if command == "git diff --binary --no-ext-diff --":
             return Result(stdout="")
+        if command.startswith("git merge-base --is-ancestor "):
+            return Result(return_code=0 if self.ancestry_valid else 1)
+        if command.startswith("git diff --binary --no-ext-diff ") and command.endswith(" --"):
+            return Result(stdout=self.baseline_diff)
         if command == "git ls-files --others --exclude-standard -z":
             return Result(stdout="\0".join(self.current_untracked) + "\0")
         if command.startswith("git diff --binary --no-index -- /dev/null "):
@@ -40,6 +46,8 @@ class FakeEnvironment:
                 ),
                 return_code=1,
             )
+        if command == "git rev-parse HEAD":
+            return Result(stdout="a" * 40 + "\n")
         raise AssertionError(f"unexpected command: {command}")
 
 
@@ -56,6 +64,34 @@ def test_patch_export_excludes_preexisting_untracked_paths():
     diff_commands = [command for command, _ in environment.commands if "--no-index" in command]
     assert len(diff_commands) == 1
     assert "agent-created.txt" in diff_commands[0]
+
+
+def test_committed_candidate_is_exported_relative_to_original_head():
+    environment = FakeEnvironment()
+    environment.baseline_diff = (
+        "diff --git a/app.py b/app.py\n"
+        "--- a/app.py\n"
+        "+++ b/app.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+candidate\n"
+    )
+    workspace = HarborWorkspaceFacade(environment)
+
+    patch = asyncio.run(workspace.git_diff_since("a" * 40))
+
+    assert "+candidate" in patch
+    assert any(command.startswith("git merge-base --is-ancestor") for command, _ in environment.commands)
+    assert any(command.startswith("git diff --binary --no-ext-diff " + "a" * 40) for command, _ in environment.commands)
+
+
+def test_history_rewrite_outside_baseline_is_rejected():
+    environment = FakeEnvironment()
+    environment.ancestry_valid = False
+    workspace = HarborWorkspaceFacade(environment)
+
+    with pytest.raises(RuntimeError, match="outside the captured baseline ancestry"):
+        asyncio.run(workspace.git_diff_since("a" * 40))
 
 
 def test_dirty_tracked_baseline_is_rejected():

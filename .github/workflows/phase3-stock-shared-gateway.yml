@@ -1,0 +1,166 @@
+name: phase3-stock-shared-gateway
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/phase3-stock-shared-gateway.yml"
+      - "DEEPSEEK_HARNESS.lock.json"
+      - "HARBOR.lock.json"
+      - "packages/benchmark_core/benchmark_core/identity.py"
+      - "packages/benchmark_core/benchmark_core/experiment_manifest.py"
+      - "packages/benchmark_core/benchmark_core/model_budget.py"
+      - "packages/benchmark_core/benchmark_core/model_gateway.py"
+      - "suites/coding/harbor/stock_agent.py"
+      - "suites/coding/harbor/stock_runtime_runner.py"
+      - "suites/coding/harbor/workspace.py"
+      - "tests/harbor_phase3_stock_gateway/**"
+      - "tools/verify_harbor_phase3_stock_gateway.py"
+
+permissions:
+  contents: read
+
+jobs:
+  stock-through-shared-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PHASE3_GATEWAY_CLIENT_TOKEN: PHASE3_STOCK_GATEWAY_TOKEN_DO_NOT_PERSIST
+      PHASE3_UPSTREAM_API_KEY: PHASE3_STOCK_UPSTREAM_KEY_DO_NOT_PERSIST
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install benchmark tests
+        run: python -m pip install -e '.[dev]'
+
+      - name: Fetch exact Harbor source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARBOR_COMMIT="$(python -c "import json; print(json.load(open('HARBOR.lock.json'))['commit'])")"
+          rm -rf .phase3-harbor
+          git init .phase3-harbor
+          git -C .phase3-harbor remote add origin https://github.com/harbor-framework/harbor.git
+          git -C .phase3-harbor fetch --depth=1 origin "$HARBOR_COMMIT"
+          git -C .phase3-harbor checkout --detach FETCH_HEAD
+          test "$(git -C .phase3-harbor rev-parse HEAD)" = "$HARBOR_COMMIT"
+          python -m pip install -e .phase3-harbor
+          python - <<'PY'
+          import importlib.metadata
+          import json
+          from pathlib import Path
+          lock = json.loads(Path('HARBOR.lock.json').read_text(encoding='utf-8'))
+          observed = importlib.metadata.version('harbor')
+          if observed != lock['version']:
+              raise SystemExit(f"Harbor version mismatch: expected {lock['version']}, observed {observed}")
+          print(f"Harbor pin verified: {observed} @ {lock['commit']}")
+          PY
+
+      - name: Prepare exact DeepSeek Harness wheel closure and task runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          WHEEL_DIR=tests/harbor_phase3_stock_gateway/environment/wheels
+          rm -rf "$WHEEL_DIR"
+          mkdir -p "$WHEEL_DIR" artifacts/harbor-phase3
+          DSH_VERSION="$(python -c "import json; print(json.load(open('DEEPSEEK_HARNESS.lock.json'))['sdk']['version'])")"
+          python -m pip download --only-binary=:all: --dest "$WHEEL_DIR" "deepseek-harness-sdk==${DSH_VERSION}"
+          cp suites/coding/harbor/stock_runtime_runner.py tests/harbor_phase3_stock_gateway/environment/runner.py
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          lock = json.loads(Path('DEEPSEEK_HARNESS.lock.json').read_text(encoding='utf-8'))
+          wheel_dir = Path('tests/harbor_phase3_stock_gateway/environment/wheels')
+          entries = [
+              {'filename': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'bytes': path.stat().st_size}
+              for path in sorted(wheel_dir.glob('*.whl'))
+          ]
+          if not entries:
+              raise SystemExit('DeepSeek Harness wheel closure is empty')
+          observed = {entry['filename']: entry['sha256'] for entry in entries}
+          expected = {
+              lock['sdk']['wheel']: lock['sdk']['sha256'],
+              lock['runtime']['linux_x86_64_wheel']: lock['runtime']['linux_x86_64_sha256'],
+          }
+          mismatches = {
+              name: {'expected': digest, 'observed': observed.get(name)}
+              for name, digest in expected.items() if observed.get(name) != digest
+          }
+          if mismatches:
+              raise SystemExit(f'DeepSeek Harness wheel pin mismatch: {mismatches}')
+          manifest = {'scope': 'PHASE3_DSH_WHEEL_CLOSURE', 'lock': lock, 'wheels': entries}
+          Path('artifacts/harbor-phase3/DSH_WHEELS.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(f"DeepSeek Harness wheel closure verified: {len(entries)} wheels")
+          PY
+
+      - name: Stage exact shared gateway modules into sidecar build context
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=tests/harbor_phase3_stock_gateway/environment/model-gateway/benchmark_core
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          : > "$TARGET/__init__.py"
+          for module in identity experiment_manifest model_budget model_gateway; do
+            cp "packages/benchmark_core/benchmark_core/${module}.py" "$TARGET/${module}.py"
+          done
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          source = Path('packages/benchmark_core/benchmark_core')
+          staged = Path('tests/harbor_phase3_stock_gateway/environment/model-gateway/benchmark_core')
+          modules = ['identity.py', 'experiment_manifest.py', 'model_budget.py', 'model_gateway.py']
+          evidence = {}
+          for name in modules:
+              a = hashlib.sha256((source / name).read_bytes()).hexdigest()
+              b = hashlib.sha256((staged / name).read_bytes()).hexdigest()
+              if a != b:
+                  raise SystemExit(f'staged gateway module changed: {name}')
+              evidence[name] = a
+          Path('artifacts/harbor-phase3/GATEWAY_SOURCE.json').write_text(
+              json.dumps({'scope': 'PHASE3_GATEWAY_SOURCE_CLOSURE', 'modules': evidence}, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Check Docker substrate
+        run: |
+          docker version
+          docker info
+
+      - name: Run Stock DeepSeek Harness through shared model gateway
+        env:
+          AUTOBENCH_MODEL_GATEWAY_URL: http://model-gateway:8000/v1
+          AUTOBENCH_MODEL_GATEWAY_USAGE_URL: http://model-gateway:8000/__autobench/usage
+          AUTOBENCH_MODEL_GATEWAY_TOKEN: PHASE3_STOCK_GATEWAY_TOKEN_DO_NOT_PERSIST
+        run: |
+          rm -rf artifacts/harbor-phase3/stock-gateway
+          harbor trials start \
+            -p tests/harbor_phase3_stock_gateway \
+            --agent suites.coding.harbor.stock_agent:StockDeepSeekAgent \
+            --trial-name phase3-stock-shared-gateway \
+            --trials-dir artifacts/harbor-phase3/stock-gateway
+
+      - name: Validate Stock Harness identity, shared accounting, secret boundary and patch
+        run: >-
+          python tools/verify_harbor_phase3_stock_gateway.py
+          --trials-dir artifacts/harbor-phase3/stock-gateway
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-stock-shared-gateway-${{ github.run_id }}
+          path: artifacts/harbor-phase3/**
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,1 @@
+This is a no-model Phase 3 transport qualification. The staged ADCP runtime stub must create and commit the deterministic candidate marker required by the verifier. No external model call is permitted.

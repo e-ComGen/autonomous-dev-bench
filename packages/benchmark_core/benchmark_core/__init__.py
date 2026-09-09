@@ -19,7 +19,25 @@ from .experiment_manifest import (
 from .identity import CanonicalModel, CommitPin, FrozenDict, Sha256Digest, VersionIdentity, canonical_json
 from .isolation import SandboxTrustStore
 from .manifest import load_project, load_scenario, load_suite, load_task
+from .model_budget import (
+    ModelAccountingError,
+    ModelBudgetExceeded,
+    ModelBudgetGateway,
+    ModelBudgetSnapshot,
+    ModelBudgetTicket,
+    ModelUsage,
+)
+from .model_gateway import (
+    GatewayUsage,
+    ModelGatewayConfig,
+    ModelGatewayHTTPServer,
+    ModelGatewayPricing,
+    SharedModelGateway,
+    parse_openai_sse_usage,
+    parse_openai_usage,
+)
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
+from .paired_experiment import PairedExperimentManifest
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
 from .runner import BenchmarkSuite, ExperimentRunner, RunContext, SystemAdapter
@@ -41,11 +59,22 @@ __all__ = [
     "ExperimentRunner",
     "ExperimentSpec",
     "FrozenDict",
+    "GatewayUsage",
     "HardGate",
     "InvalidExperiment",
+    "ModelAccountingError",
+    "ModelBudgetExceeded",
+    "ModelBudgetGateway",
+    "ModelBudgetSnapshot",
+    "ModelBudgetTicket",
+    "ModelGatewayConfig",
+    "ModelGatewayHTTPServer",
+    "ModelGatewayPricing",
     "ModelManifest",
+    "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
+    "PairedExperimentManifest",
     "ProjectEnvironmentBuilder",
     "ProjectSpec",
     "RunContext",
@@ -55,6 +84,7 @@ __all__ = [
     "ScenarioCheckpointMaterializer",
     "ScenarioSpec",
     "Sha256Digest",
+    "SharedModelGateway",
     "StageResult",
     "SuitePlan",
     "SuiteResult",
@@ -72,6 +102,8 @@ __all__ = [
     "load_scenario",
     "load_suite",
     "load_task",
+    "parse_openai_sse_usage",
+    "parse_openai_usage",
     "require_v5",
     "write_predictions",
 ]
