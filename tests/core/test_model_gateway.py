@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 
 from benchmark_core.experiment_manifest import BudgetManifest
 from benchmark_core.model_budget import ModelBudgetGateway
@@ -99,7 +98,7 @@ def test_successful_proxy_settles_authoritative_usage_and_never_forwards_client_
         }
     )
 
-    status, body, _ = proxy.proxy_json("/chat/completions", request_body())
+    status, body, _ = proxy.proxy_json("/v1/chat/completions", request_body())
 
     assert status == 200
     assert json.loads(body)["id"] == "response"
@@ -122,9 +121,9 @@ def test_successful_proxy_settles_authoritative_usage_and_never_forwards_client_
 def test_streaming_and_model_drift_fail_before_any_model_request():
     proxy, captured = gateway({"usage": {"prompt_tokens": 1, "completion_tokens": 1}})
 
-    status, _, _ = proxy.proxy_json("/chat/completions", request_body(stream=True))
+    status, _, _ = proxy.proxy_json("/v1/chat/completions", request_body(stream=True))
     assert status == 400
-    status, _, _ = proxy.proxy_json("/chat/completions", request_body(model="other-model"))
+    status, _, _ = proxy.proxy_json("/v1/chat/completions", request_body(model="other-model"))
     assert status == 400
     assert proxy.snapshot_payload()["requests"] == 0
     assert captured == []
@@ -133,7 +132,7 @@ def test_streaming_and_model_drift_fail_before_any_model_request():
 def test_provider_response_without_usage_invalidates_accounting_fail_closed():
     proxy, _ = gateway({"id": "missing-usage"})
 
-    status, body, _ = proxy.proxy_json("/chat/completions", request_body())
+    status, body, _ = proxy.proxy_json("/v1/chat/completions", request_body())
 
     assert status == 502
     assert "usage accounting invalid" in json.loads(body)["error"]
@@ -149,13 +148,13 @@ def test_provider_overshoot_is_recorded_and_response_preserved_but_future_calls_
         ledger=ledger,
     )
 
-    status, body, _ = proxy.proxy_json("/chat/completions", request_body(max_tokens=20))
+    status, body, _ = proxy.proxy_json("/v1/chat/completions", request_body(max_tokens=20))
     assert status == 200
     assert json.loads(body)["id"] == "overshoot"
     snapshot = proxy.snapshot_payload()
     assert snapshot["total_model_tokens"] == 50
     assert "total_model_token_cap" in snapshot["violations"]
 
-    status, body, _ = proxy.proxy_json("/chat/completions", request_body(max_tokens=1))
+    status, body, _ = proxy.proxy_json("/v1/chat/completions", request_body(max_tokens=1))
     assert status == 429
     assert json.loads(body)["error"] == "model_budget_exceeded"
