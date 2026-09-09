@@ -1,6 +1,7 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "scope": "PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION",
+  "status": "PASS",
   "physical_host_os": "windows",
   "controller_boundary": "powershell_to_wsl2",
   "execution_backend": "wsl2_docker_engine",
@@ -30,6 +31,22 @@
     "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
     "substrate_validator_pass": true,
     "model_called": false
+  },
+  "accepted_evidence": {
+    "status": "PASS",
+    "harbor_version": "0.22.0",
+    "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "harbor_trial_reward": 1.0,
+    "wsl_distro": "Ubuntu-24.04",
+    "wsl_kernel": "6.18.33.2-microsoft-standard-WSL2",
+    "python": "3.12.3",
+    "docker_engine_version": "29.8.0",
+    "container_identity": "Linux x86_64",
+    "model_called": false,
+    "persistence_created": false,
+    "automatic_reboot": false,
+    "host_evidence_sha256": "328a807a699918ab69f6d49a88a6b1b889e39e6d52343c310325f4caf11ea917",
+    "trial_tree_sha256": "e98ea3e812228657c65c4929d19f83388905ca6bfbb293c143a540c0366d909d"
   },
   "evidence_path": "artifacts/harbor-phase2/windows-host/PHASE2_WINDOWS_HOST.json",
   "cloud_provider_required": false
