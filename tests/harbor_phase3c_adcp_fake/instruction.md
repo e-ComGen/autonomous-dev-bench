@@ -1,0 +1,1 @@
+Exercise the ADCP Harbor process boundary. Produce a bounded candidate through the declared Architect, Coder, Reviewer and Verifier roles, exercise one repair cycle, and leave the candidate ready for external integration without claiming task completion or publication.
