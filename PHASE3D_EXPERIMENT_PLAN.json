@@ -47,6 +47,8 @@
     "official_grading_authority": "swebench-v5",
     "pair_order_algorithm": "sha256-parity-v1",
     "master_seed": 20260909,
+    "pair_seed_algorithm": "sha256-master-task-repeat-v1",
+    "pair_id_template": "phase3d-{task_id}-r{repeat_index}",
     "repeat_count_per_task": null,
     "workspace_policy": "fresh_independent_environment_per_arm",
     "cross_arm_mutable_state_reuse": false
