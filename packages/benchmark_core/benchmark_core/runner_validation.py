@@ -44,7 +44,16 @@ class AuthoritativeAdmission:
 class AuthoritativeAdmissionValidator:
     """Fail-closed validator for immutable authoritative run inputs."""
 
-    def __init__(self, *, cas: FileSystemCAS, sandbox_provider: SandboxProvider) -> None:
+    def __init__(
+        self,
+        *,
+        cas: FileSystemCAS,
+        sandbox_provider: SandboxProvider,
+        isolation_policy: object | None = None,
+    ) -> None:
+        # Kept as an injected constructor dependency for runner compatibility;
+        # admission rules consume concrete pinned inputs rather than policy flags.
+        del isolation_policy
         self._cas = cas
         self._sandbox_provider = sandbox_provider
 
