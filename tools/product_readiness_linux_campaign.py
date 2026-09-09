@@ -59,9 +59,27 @@ def _git_head(path: Path) -> str:
 
 
 def _assert_clean(path: Path) -> None:
-    output = _run(["git", "-C", str(path), "status", "--porcelain"], cwd=path, timeout=60).strip()
-    if output:
-        raise RuntimeError(f"pinned checkout is dirty: {path}\n{output}")
+    # The accepted Windows host flow checks out pins with Git for Windows and
+    # executes the Linux campaign over /mnt/c. WSL Git can otherwise report
+    # every CRLF-normalized file as modified. Ignore CR-at-EOL only; actual
+    # content changes and untracked files remain fail-closed.
+    tracked = _run(
+        ["git", "-C", str(path), "diff", "--name-only", "--ignore-cr-at-eol", "HEAD", "--"],
+        cwd=path,
+        timeout=180,
+    ).strip()
+    untracked = _run(
+        ["git", "-C", str(path), "ls-files", "--others", "--exclude-standard"],
+        cwd=path,
+        timeout=180,
+    ).strip()
+    if tracked or untracked:
+        details: list[str] = []
+        if tracked:
+            details.append("tracked changes:\n" + tracked)
+        if untracked:
+            details.append("untracked files:\n" + untracked)
+        raise RuntimeError(f"pinned checkout is dirty: {path}\n" + "\n".join(details))
 
 
 def _pin_check(name: str, path: Path, expected: str) -> str:
