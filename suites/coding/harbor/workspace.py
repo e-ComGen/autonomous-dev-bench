@@ -53,15 +53,41 @@ class HarborWorkspaceFacade:
         raise RuntimeError(f"Harbor workspace baseline check failed ({result.return_code}): {stderr}")
 
     async def git_diff(self, *, baseline_untracked: Iterable[str] = ()) -> str:
-        """Export only changes introduced after the captured task-workspace baseline.
-
-        Tracked files must be clean before agent execution. Task images may legitimately
-        contain generated untracked files, so callers capture them before the agent runs
-        and pass that snapshot here. Those pre-existing paths are excluded from the final
-        patch; newly-created untracked files are still exported without mutating the index.
-        """
+        """Export working-tree changes introduced after the captured workspace baseline."""
 
         tracked = await self.exec_checked("git diff --binary --no-ext-diff --", cwd=self.repository_root)
+        return await self._append_new_untracked(tracked, baseline_untracked=baseline_untracked)
+
+    async def git_diff_since(self, baseline_commit: str, *, baseline_untracked: Iterable[str] = ()) -> str:
+        """Export the complete final delta even when an agent commits candidates.
+
+        ADCP's existing ZoneDevelopmentRuntime deliberately commits validated
+        candidate snapshots in its isolated worktree. A plain ``git diff`` is
+        therefore empty after a clean commit. This method verifies that the
+        final HEAD descends from the captured task baseline, then compares that
+        baseline commit directly with the final working tree. The same method
+        also works for stock agents that leave HEAD unchanged and only edit the
+        working tree.
+        """
+
+        if not baseline_commit or any(character.isspace() for character in baseline_commit):
+            raise ValueError("baseline_commit must be a non-empty Git object id")
+        ancestry = await self.environment.exec(
+            f"git merge-base --is-ancestor {shlex.quote(baseline_commit)} HEAD",
+            cwd=self.repository_root,
+        )
+        if ancestry.return_code != 0:
+            if ancestry.return_code == 1:
+                raise RuntimeError("agent changed workspace history outside the captured baseline ancestry")
+            stderr = (ancestry.stderr or "")[-2000:]
+            raise RuntimeError(f"Harbor workspace ancestry check failed ({ancestry.return_code}): {stderr}")
+        tracked = await self.exec_checked(
+            f"git diff --binary --no-ext-diff {shlex.quote(baseline_commit)} --",
+            cwd=self.repository_root,
+        )
+        return await self._append_new_untracked(tracked, baseline_untracked=baseline_untracked)
+
+    async def _append_new_untracked(self, tracked: str, *, baseline_untracked: Iterable[str]) -> str:
         baseline = set(baseline_untracked)
         current_untracked = await self.untracked_paths()
         patches = [tracked] if tracked else []
