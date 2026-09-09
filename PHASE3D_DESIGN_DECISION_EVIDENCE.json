@@ -8,11 +8,11 @@
     "aggregate_total_model_token_ceiling": 193986560,
     "automatic_scenario_selection": false,
     "candidate_plan_digest": {
-      "value": "sha256:725944356ef66c8bd0e473bfe19016b06b7883b9c0ef72cf8135850b01864d97"
+      "value": "sha256:83578862e3560a55935c5bd47dbe139b0f6b492de04bdc2cd3e4d12ff74a85d0"
     },
     "decision_reference": "PHASE3D_DESIGN_RATIONALE.md#selected-design",
     "input_plan_digest": {
-      "value": "sha256:710abee3b025bab46358400c0d5a702e1c3fceb5037c3df861a061053977786e"
+      "value": "sha256:5f7c50afa3f5936dae50884e5b1ba49acfb23b0c708a3a99f8bfba7872c36094"
     },
     "outcome_data_used": false,
     "paid_model_called": false,
@@ -33,7 +33,7 @@
     "total_pair_count": 370
   },
   "schedule_identity": {
-    "value": "sha256:50a62fab288731caca4e1667155600f0de19dadcf5123d106d2ade7c53d23e54"
+    "value": "sha256:93643e6d3365d3df6a06c334fada450ec441e8d09f547ab6678ef555978f5604"
   },
   "schedule_pair_count": 370
 }
