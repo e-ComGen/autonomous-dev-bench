@@ -1,6 +1,6 @@
 # Phase 3 — shared model budget gateway + ADCP arm
 
-Base: Phase 3A main at `7650c62f126dba161a4da92d631895b81fd66e52`.
+Base: Phase 3B proxy `main` at `a6d81d39a036c7e98ddad124b6eda5a2bdec89e4`.
 
 Phase 3 introduces the causal A/B model-call boundary. It does **not** change the accepted Harbor substrate, official SWE-bench v5 grading authority, fixed cohort, private ADCP production pin, or Phase 0–2 evidence.
 
@@ -38,7 +38,7 @@ Phase 3A merged to `main` as `7650c62f126dba161a4da92d631895b81fd66e52`.
 
 ## Phase 3B — cross-process model transport
 
-The deterministic cross-process proxy qualification is accepted.
+The deterministic cross-process proxy qualification is accepted and merged to `main` as `a6d81d39a036c7e98ddad124b6eda5a2bdec89e4`.
 
 Properties:
 
@@ -57,8 +57,10 @@ Properties:
 
 The exact pinned DeepSeek Harness contract used for this design is `a66e4702047846cdaa10c66c9d3df3951f5ea70d`; its DeepSeek route emits streaming chat completions with `stream_options.include_usage=true` and terminal usage fields compatible with this proxy.
 
-Accepted CI run `34304155920` passes:
+Accepted CI:
 
+- run `34304155920` — PASS;
+- final documentation head run `34304268061` — PASS;
 - firewall self-test;
 - Ubuntu Python 3.11 / 3.12 / 3.13 pytest + build;
 - Windows Python 3.11 / 3.12 / 3.13 pytest + build;
@@ -66,11 +68,40 @@ Accepted CI run `34304155920` passes:
 - real subprocess proxy qualification;
 - fail-closed unknown-estimate and missing-usage paths.
 
-### Production blocker
+### Production DeepSeek-V4 estimator
 
-The bundled estimator is intentionally `fixture_exact_request_map` only. It proves transport/budget enforcement on deterministic known requests but is **not** a production DeepSeek tokenizer.
+Implementation is now in progress on top of the accepted proxy.
 
-Before a paid A/B, Phase 3B still requires a production exact tokenizer-aware estimator for dynamic DeepSeek wire requests. Paid mode must fail closed until that estimator is qualified. Approximate token heuristics are explicitly disallowed for the causal experiment.
+The estimator is pinned to the official DeepSeek V4 Flash 0731 release:
+
+```text
+repo: deepseek-ai/DeepSeek-V4-Flash-0731
+revision: 9e165c30e2704aec5d9d593cce3eebd58bbef1cb
+encoder: encoding/encoding_dsv4.py
+model route under test: deepseek-v4-flash
+```
+
+`DeepSeekV4RequestEstimator` delegates prompt construction to the pinned official encoder instead of reimplementing the template, then uses the pinned tokenizer's `encode(prompt)` count for pre-dispatch input accounting.
+
+The paid boundary is intentionally fail-closed:
+
+- unknown prompt-affecting top-level wire fields are rejected;
+- ambiguous/missing thinking state is rejected;
+- text-only Flash qualification rejects multimodal content;
+- tool calls require exact IDs and OpenAI function-wire shape;
+- tool-bearing requests require a system/developer encoder anchor rather than inventing one;
+- `max_tokens` must be explicit and positive;
+- no character-count or byte-count token heuristic exists.
+
+A separate offline qualification workflow must:
+
+1. load only the immutable pinned HF revision;
+2. run all four official `test_encoding_dsv4.py` golden cases unchanged;
+3. prove the benchmark wire adapter's tool/thinking case renders byte-for-byte the official case-1 golden prompt;
+4. load the pinned tokenizer and produce a non-zero exact count;
+5. emit evidence with `paid_model_called=false`, `live_provider_prompt_usage_parity=false`, and `paid_ready=false`.
+
+Even an offline PASS does **not** make the estimator paid-ready. DeepSeek provider-reported `usage.prompt_tokens` remains the final production accounting authority; live prompt-usage parity is a separate required gate and has not been run.
 
 Required property remains:
 
@@ -107,7 +138,9 @@ PHASE2_HARBOR_SUBSTRATE: PASS
 PHASE2_WINDOWS_PHYSICAL_HOST: PASS
 PHASE3A_MODEL_BUDGET_AUTHORITY: PASS
 PHASE3B_CROSS_PROCESS_PROXY_FIXTURE: PASS
-PHASE3B_PRODUCTION_EXACT_TOKEN_ESTIMATOR: NOT_IMPLEMENTED
+PHASE3B_DEEPSEEK_V4_ESTIMATOR_OFFLINE: IMPLEMENTED / CI_PENDING
+PHASE3B_LIVE_PROVIDER_PROMPT_USAGE_PARITY: NOT_RUN
+PHASE3B_PRODUCTION_PAID_READY: NO
 PHASE3C_ADCP_HARBOR_ADAPTER: NOT_IMPLEMENTED
 PAID_PAIRED_AB: NOT_RUN
 PHASE3: IN_PROGRESS
