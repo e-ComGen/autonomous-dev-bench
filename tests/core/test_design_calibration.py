@@ -49,7 +49,7 @@ def caps(**overrides) -> ResourceCaps:
 
 
 def load_plan() -> dict[str, object]:
-    return json.loads((ROOT / "PHASE3D_EXPERIMENT_PLAN.json").read_text(encoding="utf-8"))
+    return json.loads((ROOT / "PHASE3D_EXPERIMENT_PLAN.prelock.json").read_text(encoding="utf-8"))
 
 
 def test_exact_power_matches_known_mcnemar_boundary() -> None:
@@ -128,8 +128,6 @@ def test_compiled_locked_plan_is_accepted_by_existing_preregistration_validator(
         caps=caps(),
     )
 
-    # Ten accepted tasks and exact McNemar p<0.05 with a fully directional
-    # discordance scenario require only one repeat (10 total pairs).
     assert locked["status"] == "LOCKED"
     assert locked["design_paid_ready"] is True
     assert locked["design_blockers"] == []
