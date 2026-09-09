@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "role": "orchestrated_arm_private_runtime_identity",
+  "repository": "e-ComGen/autonomous-dev-control-plane",
+  "commit": "285702063815280398b95ba8696566259c8b5b34",
+  "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+  "integration": "existing-v2-runtime-role-ports",
+  "model_route": "deepseek-v4-flash",
+  "provider_route": "deepseek-official",
+  "public_process_receipt_schema": "autobench.adcp-harbor-result/1",
+  "required_role_separation": [
+    "architect",
+    "coder",
+    "reviewer",
+    "verifier"
+  ],
+  "semantic_invariants": {
+    "candidate_ready_is_task_completed": false,
+    "publication_owned_by_adcp": false,
+    "integration_owned_by_adcp": false,
+    "model_calls_via_shared_budget_proxy": true,
+    "upstream_provider_credential_visible_to_arm": false
+  },
+  "fake_process_boundary_status": "PENDING",
+  "private_pinned_runtime_qualification_status": "NOT_RUN",
+  "paid_ready": false
+}
