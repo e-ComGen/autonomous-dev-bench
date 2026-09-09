@@ -28,10 +28,7 @@ class ModelCallReservation:
     reservation_id: str
     reserved_input_tokens: int
     reserved_output_tokens: int
-
-    @property
-    def reserved_total_tokens(self) -> int:
-        return self.reserved_input_tokens + self.reserved_output_tokens
+    reserved_total_tokens: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +71,7 @@ class ModelBudgetSnapshot:
     requests: int
     reserved_input_tokens: int
     reserved_output_tokens: int
+    reserved_total_tokens: int
     open_reservations: int
 
 
@@ -85,11 +83,11 @@ class _ReservationState:
 class ModelBudgetGateway:
     """Thread-safe hard budget authority shared by all model-calling arms.
 
-    A call reserves its worst-case input/output token envelope before dispatch.
-    Completing the call replaces that reservation with actual provider usage,
-    refunding unused capacity. ``total_model_tokens`` is the primary fairness
-    counter; the remaining counters are retained for audit and secondary
-    analysis.
+    A call reserves its worst-case input/output/total token envelope before
+    dispatch. Completing the call replaces that reservation with actual
+    provider usage, refunding unused capacity. ``total_model_tokens`` is the
+    primary fairness counter; the remaining counters are retained for audit
+    and secondary analysis.
     """
 
     _ID_PREFIX: Final[str] = "model-call-"
@@ -111,20 +109,32 @@ class ModelBudgetGateway:
     def budget(self) -> BudgetManifest:
         return self._budget
 
-    def reserve(self, *, input_tokens: int, max_output_tokens: int) -> ModelCallReservation:
+    def reserve(
+        self,
+        *,
+        input_tokens: int,
+        max_output_tokens: int,
+        max_total_tokens: int | None = None,
+    ) -> ModelCallReservation:
         input_tokens = self._non_negative(input_tokens, "input_tokens")
         max_output_tokens = self._non_negative(max_output_tokens, "max_output_tokens")
-        if input_tokens == 0 and max_output_tokens == 0:
+        minimum_total = input_tokens + max_output_tokens
+        if max_total_tokens is None:
+            max_total_tokens = minimum_total
+        max_total_tokens = self._non_negative(max_total_tokens, "max_total_tokens")
+        if max_total_tokens < minimum_total:
+            raise ValueError("max_total_tokens cannot be smaller than input_tokens + max_output_tokens")
+        if max_total_tokens == 0:
             raise ValueError("a model call reservation cannot reserve zero tokens")
 
         with self._lock:
             if self._requests + len(self._reservations) >= self._budget.max_requests:
                 raise BudgetExceeded("max_requests exhausted")
 
-            reserved_input, reserved_output = self._reserved_tokens_unlocked()
+            reserved_input, reserved_output, reserved_total = self._reserved_tokens_unlocked()
             projected_input = self._input_tokens + reserved_input + input_tokens
             projected_output = self._output_tokens + reserved_output + max_output_tokens
-            projected_total = self._total_model_tokens + reserved_input + reserved_output + input_tokens + max_output_tokens
+            projected_total = self._total_model_tokens + reserved_total + max_total_tokens
 
             if projected_input > self._budget.input_token_cap:
                 raise BudgetExceeded("input_token_cap exceeded")
@@ -137,6 +147,7 @@ class ModelBudgetGateway:
                 reservation_id=self._ID_PREFIX + uuid4().hex,
                 reserved_input_tokens=input_tokens,
                 reserved_output_tokens=max_output_tokens,
+                reserved_total_tokens=max_total_tokens,
             )
             self._reservations[reservation.reservation_id] = _ReservationState(reservation=reservation)
             return reservation
@@ -201,13 +212,14 @@ class ModelBudgetGateway:
         del self._reservations[reservation.reservation_id]
         return state
 
-    def _reserved_tokens_unlocked(self) -> tuple[int, int]:
+    def _reserved_tokens_unlocked(self) -> tuple[int, int, int]:
         input_tokens = sum(state.reservation.reserved_input_tokens for state in self._reservations.values())
         output_tokens = sum(state.reservation.reserved_output_tokens for state in self._reservations.values())
-        return input_tokens, output_tokens
+        total_tokens = sum(state.reservation.reserved_total_tokens for state in self._reservations.values())
+        return input_tokens, output_tokens, total_tokens
 
     def _snapshot_unlocked(self) -> ModelBudgetSnapshot:
-        reserved_input, reserved_output = self._reserved_tokens_unlocked()
+        reserved_input, reserved_output, reserved_total = self._reserved_tokens_unlocked()
         return ModelBudgetSnapshot(
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
@@ -219,5 +231,6 @@ class ModelBudgetGateway:
             requests=self._requests,
             reserved_input_tokens=reserved_input,
             reserved_output_tokens=reserved_output,
+            reserved_total_tokens=reserved_total,
             open_reservations=len(self._reservations),
         )
