@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": "PHASE3D_PAIRED_CAUSAL_EXPERIMENT_CONTROLLER",
   "controller": {
     "implementation": "benchmark_core.paired_experiment.PairedExperimentController",
@@ -19,6 +19,34 @@
       "paid_model_called": false
     }
   },
+  "preregistration": {
+    "implementation": "benchmark_core.experiment_preregistration.ExperimentDesignSnapshot",
+    "plan": "PHASE3D_EXPERIMENT_PLAN.json",
+    "implementation_status": "PASS",
+    "qualification": {
+      "workflow_run_id": 34360073928,
+      "head_sha": "79d0a8256d02092cfdc3eeea221500efa790a3d0",
+      "firewall": "PASS",
+      "ubuntu_python": ["3.11", "3.12", "3.13"],
+      "windows_python": ["3.11", "3.12", "3.13"],
+      "pytest": "PASS",
+      "build": "PASS",
+      "model_called": false,
+      "paid_model_called": false
+    },
+    "design_status": "DRAFT_BLOCKED",
+    "design_paid_ready": false,
+    "pair_seed_algorithm": "sha256-master-task-repeat-v1",
+    "pair_id_template": "phase3d-{task_id}-r{repeat_index}",
+    "runtime_pair_must_match_locked_design": true,
+    "outcome_blind_changes_required": true,
+    "design_blockers": [
+      "EXPERIMENT_PLAN_NOT_LOCKED",
+      "REPEAT_COUNT_NOT_PRECOMMITTED",
+      "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
+      "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED"
+    ]
+  },
   "causal_invariants": {
     "same_task": true,
     "same_model": true,
@@ -29,7 +57,10 @@
     "same_seed": true,
     "agent_is_intended_treatment_difference": true,
     "arm_order_precommitted": true,
+    "pair_seed_precommitted": true,
+    "pair_id_precommitted": true,
     "receipt_binds_exact_manifest_identity": true,
+    "runtime_pair_binds_preregistered_design": true,
     "paid_admission_precedes_any_arm_execution": true,
     "dry_run_model_calls_forbidden": true
   },
@@ -45,6 +76,10 @@
     "status": "BLOCKED",
     "paid_ready": false,
     "blockers": [
+      "EXPERIMENT_PLAN_NOT_LOCKED",
+      "REPEAT_COUNT_NOT_PRECOMMITTED",
+      "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
+      "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED",
       "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS",
       "DEEPSEEK_ESTIMATOR_NOT_PAID_READY",
       "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS",
