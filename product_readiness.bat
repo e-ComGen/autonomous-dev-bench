@@ -80,6 +80,7 @@ if not exist "%VENV%\Scripts\python.exe" (
   )
 )
 set "VPY=%VENV%\Scripts\python.exe"
+set "PYTHONPATH=%REPO%"
 
 echo [setup] Installing exact benchmark verification dependencies...
 "%VPY%" -m pip install --disable-pip-version-check -U pip setuptools wheel
