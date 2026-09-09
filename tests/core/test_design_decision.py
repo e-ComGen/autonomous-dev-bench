@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_plan() -> dict[str, object]:
-    return json.loads((ROOT / "PHASE3D_EXPERIMENT_PLAN.json").read_text(encoding="utf-8"))
+    return json.loads((ROOT / "PHASE3D_EXPERIMENT_PLAN.prelock.json").read_text(encoding="utf-8"))
 
 
 def scenario(
