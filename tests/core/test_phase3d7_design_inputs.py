@@ -7,6 +7,7 @@ from benchmark_core.design_calibration import CalibrationAssumptions, ResourceCa
 from benchmark_core.design_decision import DesignSelection, prepare_design_decision
 from benchmark_core.design_sensitivity import SensitivityScenario
 from benchmark_core.identity import Sha256Digest
+from benchmark_core.paired_experiment import PaidAdmissionSnapshot
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,3 +70,14 @@ def test_phase3d7_selected_inputs_reproduce_committed_lock_without_outcomes() ->
     assert json.loads(sensitivity.to_canonical_json()) == sensitivity_committed
     assert str(Sha256Digest.of(candidate)) == evidence_committed["decision"]["candidate_plan_digest"]["value"]
     assert str(sensitivity.content_digest) == evidence_committed["decision"]["sensitivity_report_digest"]["value"]
+
+
+def test_locked_design_does_not_bypass_external_paid_admission_gates() -> None:
+    admission = PaidAdmissionSnapshot.from_repository(ROOT)
+
+    assert admission.experiment_design.design_paid_ready is True
+    assert admission.paid_ready is False
+    assert "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS" in admission.blockers
+    assert "DEEPSEEK_ESTIMATOR_NOT_PAID_READY" in admission.blockers
+    assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" in admission.blockers
+    assert "ADCP_NOT_PAID_READY" in admission.blockers
