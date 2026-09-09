@@ -27,6 +27,17 @@ from .model_budget import (
     ModelCallReservation,
     ModelUsage,
 )
+from .model_proxy import (
+    BudgetedModelProxyCore,
+    BudgetProxySnapshot,
+    ExactRequestBudgetEstimator,
+    ExactTokenEstimateUnavailable,
+    PinnedRequestEstimator,
+    ProviderUsageMissing,
+    ProxyAdmission,
+    RequestBudgetEstimate,
+)
+from .model_proxy_http import BudgetProxyHttpConfig, BudgetProxyHttpServer
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
@@ -42,10 +53,16 @@ __all__ = [
     "BudgetAccountingError",
     "BudgetExceeded",
     "BudgetManifest",
+    "BudgetedModelProxyCore",
+    "BudgetProxyHttpConfig",
+    "BudgetProxyHttpServer",
+    "BudgetProxySnapshot",
     "CanonicalModel",
     "CommitPin",
     "DockerSandboxProvider",
     "EnvironmentBuildResult",
+    "ExactRequestBudgetEstimator",
+    "ExactTokenEstimateUnavailable",
     "ExecutionManifest",
     "ExperimentManifest",
     "ExperimentRunner",
@@ -60,8 +77,12 @@ __all__ = [
     "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
+    "PinnedRequestEstimator",
     "ProjectEnvironmentBuilder",
     "ProjectSpec",
+    "ProviderUsageMissing",
+    "ProxyAdmission",
+    "RequestBudgetEstimate",
     "RunContext",
     "RunResult",
     "RunStatus",
