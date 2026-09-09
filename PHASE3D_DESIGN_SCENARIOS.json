@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_PREEXPERIMENT_MDE_SENSITIVITY",
+  "scenario_policy": "All scenarios are pre-experiment minimum-detectable-lift design thresholds, not empirical effect estimates. expected_discordant_rate=1.0 is used as a conservative maximum-discordance sensitivity convention for the fixed paired endpoint.",
+  "scenarios": [
+    {
+      "scenario_id": "mde-10pp-conservative-discordance",
+      "minimum_detectable_paired_lift": 0.10,
+      "assumptions": {
+        "expected_discordant_rate": 1.0,
+        "adcp_win_probability_given_discordance": 0.55,
+        "target_power": 0.8,
+        "max_repeat_count": 100,
+        "assumption_source": "budget_sensitivity_scenario",
+        "assumption_reference": "phase3d7:minimum-detectable-lift-sensitivity"
+      }
+    },
+    {
+      "scenario_id": "mde-15pp-conservative-discordance",
+      "minimum_detectable_paired_lift": 0.15,
+      "assumptions": {
+        "expected_discordant_rate": 1.0,
+        "adcp_win_probability_given_discordance": 0.575,
+        "target_power": 0.8,
+        "max_repeat_count": 100,
+        "assumption_source": "budget_sensitivity_scenario",
+        "assumption_reference": "phase3d7:minimum-detectable-lift-sensitivity"
+      }
+    },
+    {
+      "scenario_id": "mde-20pp-conservative-discordance",
+      "minimum_detectable_paired_lift": 0.20,
+      "assumptions": {
+        "expected_discordant_rate": 1.0,
+        "adcp_win_probability_given_discordance": 0.60,
+        "target_power": 0.8,
+        "max_repeat_count": 100,
+        "assumption_source": "budget_sensitivity_scenario",
+        "assumption_reference": "phase3d7:minimum-detectable-lift-sensitivity"
+      }
+    }
+  ]
+}
