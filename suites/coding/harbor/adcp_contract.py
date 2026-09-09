@@ -27,6 +27,64 @@ def _non_negative_int(value: object, field: str) -> int:
 
 
 @dataclass(frozen=True, slots=True)
+class ADCPModelAccounting:
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    reasoning_tokens: int
+    cache_tokens: int
+    cost_usd_micros: int
+    accounting_valid: bool
+    violations: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, payload: object) -> "ADCPModelAccounting":
+        if not isinstance(payload, dict):
+            raise ValueError("ADCP model_accounting must be a JSON object")
+        values = {
+            field: _non_negative_int(payload.get(field), field)
+            for field in (
+                "requests",
+                "input_tokens",
+                "output_tokens",
+                "reasoning_tokens",
+                "cache_tokens",
+                "cost_usd_micros",
+            )
+        }
+        valid = payload.get("accounting_valid")
+        if not isinstance(valid, bool):
+            raise ValueError("model_accounting.accounting_valid must be boolean")
+        violations_raw = payload.get("violations", [])
+        if not isinstance(violations_raw, list) or not all(
+            isinstance(value, str) and value for value in violations_raw
+        ):
+            raise ValueError("model_accounting.violations must be a list of non-empty strings")
+        return cls(
+            **values,
+            accounting_valid=valid,
+            violations=tuple(violations_raw),
+        )
+
+    @property
+    def total_model_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "requests": self.requests,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_model_tokens": self.total_model_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
+            "cache_tokens": self.cache_tokens,
+            "cost_usd_micros": self.cost_usd_micros,
+            "accounting_valid": self.accounting_valid,
+            "violations": list(self.violations),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ADCPRuntimeResult:
     runtime_repository: str
     runtime_commit: str
@@ -38,6 +96,7 @@ class ADCPRuntimeResult:
     role_calls: int
     roles_seen: tuple[str, ...]
     evidence: tuple[str, ...]
+    model_accounting: ADCPModelAccounting
     metadata: Mapping[str, object]
 
     @classmethod
@@ -81,6 +140,10 @@ class ADCPRuntimeResult:
         if not isinstance(evidence_raw, list) or not all(isinstance(value, str) and value for value in evidence_raw):
             raise ValueError("evidence must be a list of non-empty strings")
 
+        accounting = ADCPModelAccounting.from_mapping(payload.get("model_accounting"))
+        if outcome == "CANDIDATE_READY" and (not accounting.accounting_valid or accounting.violations):
+            raise ValueError("CANDIDATE_READY requires valid, non-violating shared model accounting")
+
         metadata_raw = payload.get("metadata", {})
         if not isinstance(metadata_raw, dict):
             raise ValueError("metadata must be a JSON object")
@@ -96,6 +159,7 @@ class ADCPRuntimeResult:
             role_calls=role_calls,
             roles_seen=roles,
             evidence=tuple(evidence_raw),
+            model_accounting=accounting,
             metadata=dict(metadata_raw),
         )
 
@@ -111,5 +175,6 @@ class ADCPRuntimeResult:
             "role_calls": self.role_calls,
             "roles_seen": list(self.roles_seen),
             "evidence": list(self.evidence),
+            "model_accounting": self.model_accounting.as_dict(),
             "metadata": dict(self.metadata),
         }
