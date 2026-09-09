@@ -8,8 +8,13 @@ import sys
 
 import pytest
 
+import tools.product_readiness_harbor as readiness_harbor
 from tools.product_readiness_harbor import _write_wheel_manifest
-from tools.product_readiness_linux_campaign import _assert_clean
+from tools.product_readiness_linux_campaign import (
+    _assert_clean,
+    _cleanup_legacy_self_generated_artifacts,
+    _locked_task_pathspecs,
+)
 from tools.qualify_phase3c3_real_adcp_dsh import _configure_adcp_import_paths
 
 
@@ -17,12 +22,16 @@ def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(repo), *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-def test_wsl_clean_check_ignores_only_crlf_normalization(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
+def _init_repo(repo: Path) -> None:
     repo.mkdir()
     _git(repo, "init")
     _git(repo, "config", "user.name", "autobench-test")
     _git(repo, "config", "user.email", "autobench@example.invalid")
+
+
+def test_wsl_clean_check_ignores_only_crlf_normalization(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
     tracked = repo / "tracked.txt"
     tracked.write_bytes(b"same-content\n")
     _git(repo, "add", "tracked.txt")
@@ -39,6 +48,82 @@ def test_wsl_clean_check_ignores_only_crlf_normalization(tmp_path: Path) -> None
     (repo / "untracked.txt").write_text("new\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="untracked files"):
         _assert_clean(repo)
+
+
+def test_clean_check_can_scope_large_corpus_to_locked_task_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "tasks-repo"
+    _init_repo(repo)
+    locked = repo / "tasks" / "locked-task"
+    unrelated = repo / "tasks" / "unrelated-task"
+    locked.mkdir(parents=True)
+    unrelated.mkdir(parents=True)
+    (locked / "task.yaml").write_text("instance_id: locked-task\n", encoding="utf-8")
+    (unrelated / "task.yaml").write_text("instance_id: unrelated-task\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "fixture")
+
+    pathspecs = ("tasks/locked-task",)
+    (unrelated / "task.yaml").write_text("instance_id: changed-but-unused\n", encoding="utf-8")
+    _assert_clean(repo, pathspecs=pathspecs)
+
+    (locked / "task.yaml").write_text("instance_id: changed-locked\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="tracked changes"):
+        _assert_clean(repo, pathspecs=pathspecs)
+
+    _git(repo, "checkout", "--", "tasks/locked-task/task.yaml")
+    (locked / "extra.txt").write_text("untracked locked input\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="untracked files"):
+        _assert_clean(repo, pathspecs=pathspecs)
+
+
+def test_locked_task_pathspecs_bind_to_plan_and_task_yaml(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks-repo"
+    for task_id in ("a__a-1", "b__b-2"):
+        task_dir = tasks_root / "tasks" / task_id
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.yaml").write_text(f"instance_id: {task_id}\n", encoding="utf-8")
+    plan = {"corpus": {"tasks": ["a__a-1", "b__b-2"]}}
+
+    assert _locked_task_pathspecs(plan, tasks_root) == ("tasks/a__a-1", "tasks/b__b-2")
+
+    (tasks_root / "tasks" / "b__b-2" / "task.yaml").unlink()
+    with pytest.raises(RuntimeError, match="missing or malformed"):
+        _locked_task_pathspecs(plan, tasks_root)
+
+
+def test_legacy_self_generated_adcp_artifact_is_removed_before_pin_check(tmp_path: Path) -> None:
+    root = tmp_path / "bench"
+    legacy = root / "artifacts" / "phase3c-adcp" / "PHASE3C_ADCP_FAKE_HARBOR.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("{}\n", encoding="utf-8")
+
+    _cleanup_legacy_self_generated_artifacts(root)
+
+    assert not legacy.exists()
+    assert not (root / "artifacts" / "phase3c-adcp").exists()
+
+
+def test_adcp_harbor_evidence_is_written_to_campaign_workspace(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "bench"
+    workspace = tmp_path / "campaign"
+    harbor_root = tmp_path / "harbor"
+    captured: dict[str, str] = {}
+
+    monkeypatch.setattr(readiness_harbor, "_prepare_task", lambda source, target: None)
+    monkeypatch.setattr(readiness_harbor, "_common_script_prefix", lambda root, harbor_root: "")
+    monkeypatch.setattr(readiness_harbor, "_linux_path", lambda path: str(path))
+
+    def fake_bash(script: str, *, timeout: int = 1800) -> str:
+        captured["script"] = script
+        return "PASS"
+
+    monkeypatch.setattr(readiness_harbor, "_bash", fake_bash)
+
+    assert readiness_harbor.run_adcp_boundary_trial(root, workspace, harbor_root) == "PASS"
+    expected = workspace / "artifacts" / "phase3c-adcp" / "PHASE3C_ADCP_FAKE_HARBOR.json"
+    assert "--output" in captured["script"]
+    assert str(expected) in captured["script"]
+    assert str(root / "artifacts" / "phase3c-adcp") not in captured["script"]
 
 
 def test_stock_wheel_manifest_recomputes_and_checks_pinned_digests(tmp_path: Path) -> None:

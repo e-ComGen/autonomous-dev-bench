@@ -58,13 +58,53 @@ def _git_head(path: Path) -> str:
     return _run(["git", "-C", str(path), "rev-parse", "HEAD"], cwd=path, timeout=60).strip()
 
 
-def _assert_clean(path: Path) -> None:
-    # The accepted Windows host flow checks out pins with Git for Windows and
-    # executes the Linux campaign over /mnt/c. WSL Git can otherwise report
-    # every CRLF-normalized file as modified. `--name-only` still reports those
-    # paths even with `--ignore-cr-at-eol`, so use the diff exit status as the
-    # authority and ask for names only when a real tracked change exists.
-    command = ["git", "-C", str(path), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--"]
+def _cleanup_legacy_self_generated_artifacts(root: Path) -> None:
+    """Remove only the obsolete output path written by pre-fix readiness runs."""
+    legacy = root / "artifacts" / "phase3c-adcp" / "PHASE3C_ADCP_FAKE_HARBOR.json"
+    if not legacy.is_file():
+        return
+    legacy.unlink()
+    print(f"[CLEANUP] removed legacy readiness output from source checkout: {legacy}", flush=True)
+    for parent in (legacy.parent, legacy.parent.parent):
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+
+
+def _locked_task_pathspecs(plan: dict[str, object], tasks_root: Path) -> tuple[str, ...]:
+    corpus = plan.get("corpus")
+    tasks = corpus.get("tasks") if isinstance(corpus, dict) else None
+    if not isinstance(tasks, list) or not tasks:
+        raise RuntimeError("locked experiment plan has no corpus tasks")
+    pathspecs: list[str] = []
+    for task_id in tasks:
+        if not isinstance(task_id, str) or not task_id:
+            raise RuntimeError(f"invalid locked task id: {task_id!r}")
+        relative = f"tasks/{task_id}"
+        task_dir = tasks_root / relative
+        if not task_dir.is_dir() or not (task_dir / "task.yaml").is_file():
+            raise RuntimeError(f"locked task directory is missing or malformed: {task_dir}")
+        pathspecs.append(relative)
+    return tuple(pathspecs)
+
+
+def _assert_clean(path: Path, *, pathspecs: tuple[str, ...] = ()) -> None:
+    # Git for Windows checks out the pinned sources and the campaign runs over
+    # the same NTFS tree through WSL. Ignore CR-at-EOL only; real content changes
+    # and untracked inputs remain fail-closed. For a large corpus repository the
+    # caller may restrict this to the exact locked inputs actually consumed.
+    command = [
+        "git",
+        "-C",
+        str(path),
+        "diff",
+        "--quiet",
+        "--ignore-cr-at-eol",
+        "HEAD",
+        "--",
+        *pathspecs,
+    ]
     print("+", subprocess.list2cmdline(command), flush=True)
     completed = subprocess.run(
         command,
@@ -86,14 +126,14 @@ def _assert_clean(path: Path) -> None:
     tracked = ""
     if tracked_changed:
         tracked = _run(
-            ["git", "-C", str(path), "diff", "--name-only", "HEAD", "--"],
+            ["git", "-C", str(path), "diff", "--name-only", "HEAD", "--", *pathspecs],
             cwd=path,
             timeout=180,
         ).strip()
         if not tracked:
             tracked = "<tracked content differs from HEAD>"
     untracked = _run(
-        ["git", "-C", str(path), "ls-files", "--others", "--exclude-standard"],
+        ["git", "-C", str(path), "ls-files", "--others", "--exclude-standard", "--", *pathspecs],
         cwd=path,
         timeout=180,
     ).strip()
@@ -103,16 +143,23 @@ def _assert_clean(path: Path) -> None:
             details.append("tracked changes:\n" + tracked)
         if untracked:
             details.append("untracked files:\n" + untracked)
-        raise RuntimeError(f"pinned checkout is dirty: {path}\n" + "\n".join(details))
+        scope = f" within locked scope {list(pathspecs)!r}" if pathspecs else ""
+        raise RuntimeError(f"pinned checkout is dirty{scope}: {path}\n" + "\n".join(details))
 
 
-def _pin_check(name: str, path: Path, expected: str) -> str:
+def _pin_check(
+    name: str,
+    path: Path,
+    expected: str,
+    *,
+    pathspecs: tuple[str, ...] = (),
+) -> str:
     if not (path / ".git").is_dir():
         raise RuntimeError(f"{name} checkout is missing: {path}")
     observed = _git_head(path)
     if observed != expected:
         raise RuntimeError(f"{name} HEAD mismatch: expected {expected}, got {observed}")
-    _assert_clean(path)
+    _assert_clean(path, pathspecs=pathspecs)
     return observed
 
 
@@ -147,6 +194,8 @@ def main() -> int:
     dsh_lock = _read(root / "DEEPSEEK_HARNESS.lock.json")
     harbor_lock = _read(root / "HARBOR.lock.json")
     plan = _read(root / "PHASE3D_EXPERIMENT_PLAN.json")
+    _cleanup_legacy_self_generated_artifacts(root)
+    task_pathspecs = _locked_task_pathspecs(plan, tasks_root)
     expected = {
         "BENCH": _git_head(root),
         "ADCP": str(adcp_lock["commit"]),
@@ -163,8 +212,10 @@ def main() -> int:
     }
     for name in ("BENCH", "ADCP", "DSH", "HARBOR", "TASKS"):
         try:
-            observed = _pin_check(name, roots[name], expected[name])
-            _add(checks, f"PIN {name}", "PASS", observed)
+            scoped = task_pathspecs if name == "TASKS" else ()
+            observed = _pin_check(name, roots[name], expected[name], pathspecs=scoped)
+            detail = observed if name != "TASKS" else f"{observed}; locked_task_paths={len(task_pathspecs)}"
+            _add(checks, f"PIN {name}", "PASS", detail)
         except BaseException as error:
             _add(checks, f"PIN {name}", "FAIL", str(error))
             blockers.append(f"PIN_{name}: {error}")
@@ -244,6 +295,13 @@ def main() -> int:
     except BaseException as error:
         _add(checks, "HARBOR CONTRACTS", "FAIL", str(error))
         blockers.append(f"HARBOR_CONTRACTS: {error}")
+
+    try:
+        _assert_clean(root)
+        _add(checks, "BENCH SOURCE POSTCHECK", "PASS", "runtime qualification left source checkout clean")
+    except BaseException as error:
+        _add(checks, "BENCH SOURCE POSTCHECK", "FAIL", str(error))
+        blockers.append(f"BENCH_SOURCE_POSTCHECK: {error}")
 
     try:
         detail = live_parity(root, sys.executable, artifacts)
