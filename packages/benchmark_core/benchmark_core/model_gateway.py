@@ -125,6 +125,16 @@ def parse_openai_usage(payload: Mapping[str, object]) -> GatewayUsage:
     )
 
 
+def _join_upstream_path(base_url: str, request_path: str) -> str:
+    base = base_url.rstrip("/")
+    path = request_path.split("?", 1)[0]
+    if not path.startswith("/"):
+        path = "/" + path
+    if base.endswith("/v1") and path.startswith("/v1/"):
+        path = path[3:]
+    return base + path
+
+
 class SharedModelGateway:
     """Stateful request proxy and authoritative per-arm model ledger."""
 
@@ -188,7 +198,7 @@ class SharedModelGateway:
         except ModelBudgetExceeded as error:
             return self._json_response(429, {"error": "model_budget_exceeded", "usage": error.snapshot.as_dict()})
 
-        upstream_url = self.config.upstream_base_url.rstrip("/") + "/" + path.lstrip("/")
+        upstream_url = _join_upstream_path(self.config.upstream_base_url, path)
         request = Request(
             upstream_url,
             data=body,
