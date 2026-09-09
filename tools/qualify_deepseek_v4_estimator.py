@@ -4,6 +4,7 @@ import argparse
 from hashlib import sha256
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -59,10 +60,25 @@ def _download_assets(lock: dict[str, object], cache_dir: Path) -> dict[str, Path
     return result
 
 
-def _run_official_encoder_tests(test_script: Path) -> dict[str, object]:
+def _run_official_encoder_tests(test_script: Path, encoding_file: Path) -> dict[str, object]:
+    if not test_script.is_file() or not encoding_file.is_file():
+        raise RuntimeError("pinned official encoder test assets are missing after download")
+
+    # Keep the official test script byte-identical. Hugging Face cache paths may
+    # resolve individual assets through different symlink/blob locations, so
+    # make the pinned encoding module explicitly importable instead of patching
+    # the upstream test or assuming one cache-directory layout.
+    env = dict(os.environ)
+    python_path = [str(encoding_file.parent), str(test_script.parent)]
+    existing = env.get("PYTHONPATH")
+    if existing:
+        python_path.append(existing)
+    env["PYTHONPATH"] = os.pathsep.join(python_path)
+
     execution = subprocess.run(
-        [sys.executable, test_script.name],
+        [sys.executable, str(test_script)],
         cwd=test_script.parent,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -78,6 +94,8 @@ def _run_official_encoder_tests(test_script: Path) -> dict[str, object]:
     return {
         "return_code": execution.returncode,
         "reported_all_four_passed": True,
+        "test_script_sha256": _sha256(test_script),
+        "encoding_file_sha256": _sha256(encoding_file),
         "stdout_sha256": sha256(execution.stdout.encode("utf-8")).hexdigest(),
     }
 
@@ -156,7 +174,10 @@ def qualify(evidence_path: Path) -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="autobench-dsv4-estimator-") as temp:
         cache_dir = Path(temp) / "hf-cache"
         assets = _download_assets(lock, cache_dir)
-        official = _run_official_encoder_tests(assets[source["encoding_test_file"]])
+        official = _run_official_encoder_tests(
+            assets[source["encoding_test_file"]],
+            assets[source["encoding_file"]],
+        )
         wire = _wire_case_1(lock, assets, cache_dir)
         hashes = {name: _sha256(path) for name, path in sorted(assets.items())}
 
