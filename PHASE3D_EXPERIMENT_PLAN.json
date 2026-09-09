@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "PHASE3D_FIRST_STOCK_VS_ADCP_PAIRED_EXPERIMENT",
-  "status": "DRAFT_BLOCKED",
+  "status": "LOCKED",
   "scientific_question": "Does ADCP orchestration improve software-task resolution relative to the same DeepSeek model running as the stock DeepSeek coding agent under the same model-token budget?",
   "treatment": {
     "arm_a": {
@@ -49,18 +49,18 @@
     "master_seed": 20260909,
     "pair_seed_algorithm": "sha256-master-task-repeat-v1",
     "pair_id_template": "phase3d-{task_id}-r{repeat_index}",
-    "repeat_count_per_task": null,
+    "repeat_count_per_task": 37,
     "workspace_policy": "fresh_independent_environment_per_arm",
     "cross_arm_mutable_state_reuse": false
   },
   "budget": {
     "primary_fairness_measure": "total_model_tokens",
-    "total_model_token_cap_per_arm": null,
-    "input_token_cap_per_arm": null,
-    "output_token_cap_per_arm": null,
-    "max_requests_per_arm": null,
-    "wall_time_seconds_per_arm": null,
-    "patch_byte_cap_per_arm": null,
+    "total_model_token_cap_per_arm": 262144,
+    "input_token_cap_per_arm": 262144,
+    "output_token_cap_per_arm": 65536,
+    "max_requests_per_arm": 16,
+    "wall_time_seconds_per_arm": 600,
+    "patch_byte_cap_per_arm": 262144,
     "secondary_accounting": [
       "input_tokens",
       "output_tokens",
@@ -116,20 +116,52 @@
   "stopping": {
     "rule": "fixed_precommitted_pairs_only",
     "interim_outcome_based_stopping": false,
-    "required_completed_pairs": null
+    "required_completed_pairs": 370
   },
-  "design_paid_ready": false,
-  "design_blockers": [
-    "EXPERIMENT_PLAN_NOT_LOCKED",
-    "REPEAT_COUNT_NOT_PRECOMMITTED",
-    "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
-    "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED"
-  ],
+  "design_paid_ready": true,
+  "design_blockers": [],
   "external_admission_gates": [
     "DEEPSEEK_V4_ESTIMATOR.lock.json",
     "ADCP.lock.json",
     "DEEPSEEK_HARNESS.lock.json"
   ],
   "paid_paired_ab": "NOT_RUN",
-  "winner": "UNKNOWN"
+  "winner": "UNKNOWN",
+  "calibration": {
+    "method": "exact-mcnemar-random-discordance-v1",
+    "assumptions": {
+      "adcp_win_probability_given_discordance": 0.575,
+      "alpha": 0.05,
+      "assumption_reference": "phase3d7:minimum-detectable-lift-sensitivity",
+      "assumption_source": "budget_sensitivity_scenario",
+      "expected_discordant_rate": 1.0,
+      "max_repeat_count": 100,
+      "method": "exact-mcnemar-random-discordance-v1",
+      "target_power": 0.8
+    },
+    "assumptions_digest": "sha256:01f35c00573f90942b0c292d119fd36b9826bfab3bd947fd2e9c07a95120a9ce",
+    "resource_caps": {
+      "input_token_cap_per_arm": 262144,
+      "max_requests_per_arm": 16,
+      "output_token_cap_per_arm": 65536,
+      "patch_byte_cap_per_arm": 262144,
+      "total_model_token_cap_per_arm": 262144,
+      "wall_time_seconds_per_arm": 600
+    },
+    "result": {
+      "achieved_power": 0.8073632070304838,
+      "assumptions_digest": {
+        "value": "sha256:01f35c00573f90942b0c292d119fd36b9826bfab3bd947fd2e9c07a95120a9ce"
+      },
+      "expected_discordant_pairs": 370.0,
+      "implied_resolution_rate_difference": 0.1499999999999999,
+      "method": "exact-mcnemar-random-discordance-v1",
+      "repeat_count_per_task": 37,
+      "target_power": 0.8,
+      "task_count": 10,
+      "total_pair_count": 370
+    },
+    "outcome_data_used": false,
+    "paid_model_called": false
+  }
 }
