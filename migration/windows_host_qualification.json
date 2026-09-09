@@ -1,31 +1,30 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "scope": "PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION",
   "physical_host_os": "windows",
   "controller_boundary": "powershell_to_wsl2",
-  "execution_backend": "docker_desktop_linux_engine",
+  "execution_backend": "wsl2_docker_engine",
   "task_environment_os": "linux_container",
   "native_windows_harbor_claimed": false,
   "official_swebench_semantics_preserved": true,
   "bootstrap": {
-    "mode": "automatic",
+    "mode": "manual_reboot_no_persistence",
     "elevates_with_uac": true,
     "installs_wsl2": true,
     "qualification_distro": "Ubuntu-24.04",
     "installs_linux_prerequisites": true,
     "installs_python_3_12": true,
-    "installs_docker_desktop": true,
-    "docker_install_preference": [
-      "winget: Docker.DockerDesktop",
-      "official Docker Desktop Installer fallback"
-    ],
-    "docker_backend": "wsl-2",
-    "supports_runonce_resume_after_reboot": true,
-    "supports_auto_reboot": true
+    "installs_docker_engine_inside_wsl": true,
+    "docker_desktop_required": false,
+    "automatic_reboot": false,
+    "runonce_resume": false,
+    "scheduled_task_resume": false,
+    "windows_startup_entry": false
   },
   "required": {
     "wsl_version": 2,
     "docker_ostype": "linux",
+    "docker_daemon_location": "inside_wsl2",
     "python_inside_wsl": ">=3.12",
     "harbor_version": "0.22.0",
     "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
