@@ -63,9 +63,32 @@ def test_commit_refunds_unused_reservation_capacity_and_records_secondary_usage(
     assert snapshot.open_reservations == 0
     assert snapshot.reserved_input_tokens == 0
     assert snapshot.reserved_output_tokens == 0
+    assert snapshot.reserved_total_tokens == 0
 
     second = gateway.reserve(input_tokens=50, max_output_tokens=20)
     assert second.reserved_total_tokens == 70
+
+
+def test_explicit_total_envelope_supports_reasoning_telemetry_without_double_counting() -> None:
+    gateway = ModelBudgetGateway(_budget(total_model_token_cap=200))
+    reservation = gateway.reserve(input_tokens=40, max_output_tokens=20, max_total_tokens=80)
+
+    assert reservation.reserved_input_tokens == 40
+    assert reservation.reserved_output_tokens == 20
+    assert reservation.reserved_total_tokens == 80
+    assert gateway.snapshot().reserved_total_tokens == 80
+
+    snapshot = gateway.commit(
+        reservation,
+        ModelUsage(
+            input_tokens=40,
+            output_tokens=20,
+            total_model_tokens=75,
+            reasoning_tokens=15,
+        ),
+    )
+    assert snapshot.total_model_tokens == 75
+    assert snapshot.reasoning_tokens == 15
 
 
 def test_request_cap_counts_committed_calls_and_open_reservations() -> None:
@@ -100,6 +123,7 @@ def test_accounting_mismatch_fails_closed_without_losing_reservation() -> None:
     assert snapshot.open_reservations == 1
     assert snapshot.reserved_input_tokens == 20
     assert snapshot.reserved_output_tokens == 10
+    assert snapshot.reserved_total_tokens == 30
 
     gateway.cancel(reservation)
 
