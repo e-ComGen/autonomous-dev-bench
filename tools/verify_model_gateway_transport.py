@@ -47,18 +47,48 @@ class FakeUpstreamHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = json.loads(self.rfile.read(length).decode("utf-8"))
         authorization = self.headers.get("Authorization")
+        stream = payload.get("stream") is True
         self.server.requests_seen.append(
             {
                 "path": self.path,
                 "authorization": authorization,
                 "model": payload.get("model"),
-                "stream": payload.get("stream"),
+                "stream": stream,
+                "include_usage": (
+                    isinstance(payload.get("stream_options"), dict)
+                    and payload["stream_options"].get("include_usage") is True
+                ),
             }
         )
         if authorization != f"Bearer {UPSTREAM_KEY}":
             self.send_response(401)
             self.end_headers()
             return
+
+        if stream:
+            chunks = [
+                {"choices": [{"delta": {"role": "assistant", "content": "stream-ok"}}]},
+                {
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": 13,
+                        "completion_tokens": 5,
+                        "prompt_tokens_details": {"cached_tokens": 4},
+                        "completion_tokens_details": {"reasoning_tokens": 1},
+                    },
+                },
+            ]
+            body = b"".join(
+                ("data: " + json.dumps(chunk, separators=(",", ":")) + "\n\n").encode("utf-8")
+                for chunk in chunks
+            ) + b"data: [DONE]\n\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         response = {
             "id": "phase3-fake-upstream",
             "object": "chat.completion",
@@ -79,7 +109,12 @@ class FakeUpstreamHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def request_json(url: str, payload: dict[str, object] | None, *, token: str | None) -> tuple[int, dict[str, object]]:
+def request_bytes(
+    url: str,
+    payload: dict[str, object] | None,
+    *,
+    token: str | None,
+) -> tuple[int, bytes, str]:
     headers = {"Content-Type": "application/json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
@@ -87,11 +122,21 @@ def request_json(url: str, payload: dict[str, object] | None, *, token: str | No
     request = Request(url, data=data, headers=headers, method="GET" if payload is None else "POST")
     try:
         with urlopen(request, timeout=5) as response:
-            return int(response.status), json.loads(response.read().decode("utf-8"))
+            return (
+                int(response.status),
+                response.read(),
+                response.headers.get("Content-Type", "application/octet-stream"),
+            )
     except HTTPError as error:
-        body = error.read()
-        decoded = json.loads(body.decode("utf-8")) if body else {}
-        return int(error.code), decoded
+        return int(error.code), error.read(), error.headers.get("Content-Type", "application/json")
+
+
+def request_json(url: str, payload: dict[str, object] | None, *, token: str | None) -> tuple[int, dict[str, object]]:
+    status, body, _ = request_bytes(url, payload, token=token)
+    decoded = json.loads(body.decode("utf-8")) if body else {}
+    if not isinstance(decoded, dict):
+        raise ValueError("expected JSON object response")
+    return status, decoded
 
 
 def main() -> int:
@@ -149,19 +194,43 @@ def main() -> int:
             token=CLIENT_TOKEN,
         )
         checks["completion_status_200"] = status == 200 and response.get("id") == "phase3-fake-upstream"
-        checks["one_upstream_request"] = len(upstream.requests_seen) == 1
-        observed = upstream.requests_seen[0]
-        checks["upstream_path_normalized"] = observed.get("path") == "/v1/chat/completions"
-        checks["upstream_received_only_upstream_key"] = observed.get("authorization") == f"Bearer {UPSTREAM_KEY}"
-        checks["client_token_not_forwarded"] = CLIENT_TOKEN not in str(observed)
+        checks["one_nonstream_upstream_request"] = len(upstream.requests_seen) == 1
+        first = upstream.requests_seen[0]
+        checks["upstream_path_normalized"] = first.get("path") == "/v1/chat/completions"
+        checks["upstream_received_only_upstream_key"] = first.get("authorization") == f"Bearer {UPSTREAM_KEY}"
+        checks["client_token_not_forwarded"] = CLIENT_TOKEN not in str(first)
+
+        status, stream_body, stream_type = request_bytes(
+            gateway_root + "/v1/chat/completions",
+            {
+                "model": MODEL,
+                "messages": [{"role": "user", "content": "stream transport"}],
+                "stream": True,
+                "stream_options": {"include_usage": True},
+                "max_tokens": 20,
+            },
+            token=CLIENT_TOKEN,
+        )
+        checks["stream_status_200"] = status == 200
+        checks["stream_content_type"] = "text/event-stream" in stream_type.lower()
+        checks["stream_payload_preserved"] = b"stream-ok" in stream_body and b"data: [DONE]" in stream_body
+        checks["two_upstream_requests"] = len(upstream.requests_seen) == 2
+        second = upstream.requests_seen[1]
+        checks["stream_usage_requested"] = second.get("stream") is True and second.get("include_usage") is True
+        checks["stream_upstream_key_isolated"] = second.get("authorization") == f"Bearer {UPSTREAM_KEY}"
 
         status, usage = request_json(gateway_root + "/__autobench/usage", None, token=CLIENT_TOKEN)
         checks["usage_status_200"] = status == 200
         checks["usage_model_exact"] = usage.get("model") == MODEL and usage.get("model_route") == "shared_budget_gateway"
-        checks["usage_primary_total"] = usage.get("input_tokens") == 11 and usage.get("output_tokens") == 7 and usage.get("total_model_tokens") == 18
-        checks["usage_diagnostics"] = usage.get("cache_tokens") == 3 and usage.get("reasoning_tokens") == 2
-        checks["usage_request_count"] = usage.get("requests") == 1
-        checks["usage_cost"] = usage.get("cost_usd_micros") == 25
+        checks["usage_streaming_mode"] = usage.get("streaming_mode") == "buffered_sse_usage_accounted"
+        checks["usage_primary_total"] = (
+            usage.get("input_tokens") == 24
+            and usage.get("output_tokens") == 12
+            and usage.get("total_model_tokens") == 36
+        )
+        checks["usage_diagnostics"] = usage.get("cache_tokens") == 7 and usage.get("reasoning_tokens") == 3
+        checks["usage_request_count"] = usage.get("requests") == 2
+        checks["usage_cost"] = usage.get("cost_usd_micros") == 48
         checks["usage_valid"] = usage.get("accounting_valid") is True and usage.get("violations") == []
 
         status, _ = request_json(gateway_root + "/__autobench/usage", None, token="wrong")
@@ -172,14 +241,14 @@ def main() -> int:
             {"model": MODEL, "messages": [], "stream": True, "max_tokens": 1},
             token=CLIENT_TOKEN,
         )
-        checks["streaming_fails_closed"] = status == 400 and len(upstream.requests_seen) == 1
+        checks["stream_without_usage_fails_closed"] = status == 400 and len(upstream.requests_seen) == 2
 
         status, _ = request_json(
             gateway_root + "/v1/chat/completions",
             {"model": "wrong-model", "messages": [], "max_tokens": 1},
             token=CLIENT_TOKEN,
         )
-        checks["model_drift_fails_closed"] = status == 400 and len(upstream.requests_seen) == 1
+        checks["model_drift_fails_closed"] = status == 400 and len(upstream.requests_seen) == 2
     finally:
         server.shutdown()
         server.server_close()
@@ -195,7 +264,8 @@ def main() -> int:
         "status": "PASS",
         "paid_model_called": False,
         "deterministic_fake_upstream": True,
-        "streaming_qualified": False,
+        "streaming_usage_qualified": True,
+        "streaming_mode": "buffered_sse_usage_accounted",
         "model": MODEL,
         "checks": checks,
         "usage": gateway.snapshot_payload(),
