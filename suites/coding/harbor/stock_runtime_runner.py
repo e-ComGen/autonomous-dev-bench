@@ -6,7 +6,7 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from deepseek_harness import DeepSeekHarness
 from deepseek_harness_runtime import bundled_runtime_path
@@ -23,7 +23,10 @@ def optional_usage() -> dict[str, object] | None:
     url = os.environ.get("AUTOBENCH_DEEPSEEK_USAGE_URL")
     if not url:
         return None
-    with urlopen(url, timeout=5) as response:
+    token = os.environ.get("AUTOBENCH_DEEPSEEK_USAGE_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    request = Request(url, headers=headers)
+    with urlopen(request, timeout=5) as response:
         payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("usage endpoint returned a non-object")
@@ -42,6 +45,8 @@ def main() -> int:
     prompt = prompt_path.read_text(encoding="utf-8")
     dsh_home = Path(os.environ.get("AUTOBENCH_DSH_HOME", f"/tmp/autobench-dsh-{session_id}"))
     dsh_home.mkdir(parents=True, exist_ok=True)
+    model_route = os.environ.get("AUTOBENCH_MODEL_ROUTE", "unspecified")
+    direct_model_api_used = os.environ.get("AUTOBENCH_DIRECT_MODEL_API_USED", "1") == "1"
 
     with DeepSeekHarness(
         provider=provider,
@@ -75,6 +80,8 @@ def main() -> int:
         "event_types": [event.get("type") for event in result.events if isinstance(event, dict)],
         "usage": optional_usage(),
         "fake_model": os.environ.get("AUTOBENCH_FAKE_MODEL") == "1",
+        "model_route": model_route,
+        "direct_model_api_used": direct_model_api_used,
     }
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
