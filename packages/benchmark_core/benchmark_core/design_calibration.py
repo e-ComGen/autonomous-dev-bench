@@ -192,7 +192,7 @@ def calibrate_repeat_count(
             assumptions.expected_discordant_rate
             * (2.0 * assumptions.adcp_win_probability_given_discordance - 1.0)
         ),
-        assumptions_digest=Sha256Digest.of(assumptions.canonical_dict()),
+        assumptions_digest=assumptions.content_digest,
     )
 
 
@@ -256,10 +256,10 @@ def compile_locked_plan(
     result_plan["design_blockers"] = []
     result_plan["calibration"] = {
         "method": CALIBRATION_METHOD,
-        "assumptions": assumptions.canonical_dict(),
+        "assumptions": _canonical_plain(assumptions),
         "assumptions_digest": str(calibration.assumptions_digest),
-        "resource_caps": caps.canonical_dict(),
-        "result": calibration.canonical_dict(),
+        "resource_caps": _canonical_plain(caps),
+        "result": _canonical_plain(calibration),
         "outcome_data_used": False,
         "paid_model_called": False,
     }
@@ -269,6 +269,13 @@ def compile_locked_plan(
 def canonical_json_sha256(value: Mapping[str, object]) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_plain(model: CanonicalModel) -> dict[str, object]:
+    value = json.loads(model.to_canonical_json())
+    if not isinstance(value, dict):
+        raise DesignCalibrationError("canonical model did not serialize to an object")
+    return value
 
 
 def _conditional_rejection_probability(discordant: int, p: float, alpha: float) -> float:
