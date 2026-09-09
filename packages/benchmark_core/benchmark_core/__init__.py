@@ -5,6 +5,15 @@ normal production APIs and translate their outputs into these neutral records.
 """
 
 from .bootstrap import EnvironmentBuildResult, ProjectEnvironmentBuilder
+from .deepseek_v4_estimator import (
+    DEEPSEEK_V4_ENCODING_FILE,
+    DEEPSEEK_V4_MODEL,
+    DEEPSEEK_V4_REPO_ID,
+    DEEPSEEK_V4_REVISION,
+    DeepSeekV4EstimatorAssetError,
+    DeepSeekV4EstimatorIdentity,
+    DeepSeekV4RequestEstimator,
+)
 from .experiment import ExperimentSpec, SuitePlan, SystemUnderTest
 from .experiment_manifest import (
     AgentManifest,
@@ -59,6 +68,13 @@ __all__ = [
     "BudgetProxySnapshot",
     "CanonicalModel",
     "CommitPin",
+    "DEEPSEEK_V4_ENCODING_FILE",
+    "DEEPSEEK_V4_MODEL",
+    "DEEPSEEK_V4_REPO_ID",
+    "DEEPSEEK_V4_REVISION",
+    "DeepSeekV4EstimatorAssetError",
+    "DeepSeekV4EstimatorIdentity",
+    "DeepSeekV4RequestEstimator",
     "DockerSandboxProvider",
     "EnvironmentBuildResult",
     "ExactRequestBudgetEstimator",
