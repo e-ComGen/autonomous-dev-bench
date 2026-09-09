@@ -31,7 +31,7 @@ class StockDeepSeekAgent(BaseAgent):
         self.model_name = model_name or "deepseek-v4-flash"
 
     def version(self) -> str:
-        return "1.0.0"
+        return "1.1.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +48,7 @@ class StockDeepSeekAgent(BaseAgent):
         api_key = os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY")
         if not base_url or not api_key:
             raise ValueError("StockDeepSeekAgent requires controller-side DeepSeek route credentials")
+        phase3d_paid = os.environ.get("AUTOBENCH_PHASE3D_PAID_EXPERIMENT") == "1"
 
         prompt_file = self.logs_dir / "INSTRUCTION.md"
         prompt_file.write_text(instruction, encoding="utf-8")
@@ -93,7 +94,7 @@ class StockDeepSeekAgent(BaseAgent):
             raise ValueError("stock DeepSeek model identity changed")
 
         patch = await workspace.git_diff()
-        if not patch.strip():
+        if not patch.strip() and not phase3d_paid:
             raise ValueError("stock DeepSeek Harness produced no repository patch")
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
@@ -109,6 +110,7 @@ class StockDeepSeekAgent(BaseAgent):
         context.metadata = {
             "autonomous_dev_bench": {
                 "agent": "stock_deepseek_harness",
+                "phase3d_paid": phase3d_paid,
                 "baseline_commit": baseline_commit,
                 "environment_id": getattr(environment, "environment_id", None),
                 "profile": result["profile"],
@@ -123,5 +125,6 @@ class StockDeepSeekAgent(BaseAgent):
                 "fake_model": result.get("fake_model") is True,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
+                "empty_patch": not bool(patch.strip()),
             }
         }
