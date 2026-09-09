@@ -68,9 +68,7 @@ Accepted CI:
 - real subprocess proxy qualification;
 - fail-closed unknown-estimate and missing-usage paths.
 
-### Production DeepSeek-V4 estimator
-
-Implementation is now in progress on top of the accepted proxy.
+### Production DeepSeek-V4 estimator — offline boundary accepted
 
 The estimator is pinned to the official DeepSeek V4 Flash 0731 release:
 
@@ -93,15 +91,38 @@ The paid boundary is intentionally fail-closed:
 - `max_tokens` must be explicit and positive;
 - no character-count or byte-count token heuristic exists.
 
-A separate offline qualification workflow must:
+Accepted offline qualification:
 
-1. load only the immutable pinned HF revision;
-2. run all four official `test_encoding_dsv4.py` golden cases unchanged;
-3. prove the benchmark wire adapter's tool/thinking case renders byte-for-byte the official case-1 golden prompt;
-4. load the pinned tokenizer and produce a non-zero exact count;
-5. emit evidence with `paid_model_called=false`, `live_provider_prompt_usage_parity=false`, and `paid_ready=false`.
+```text
+workflow run: 34347337284
+head: fa64a6f72c84a76446b272f951ae4f224f330da3
+artifact: 10102254727
+artifact digest: sha256:47741fbcdaba2c2009a23467b5c0362333473f0f05438b52d4b86e7dbe8483a6
+status: PASS
+paid_model_called: false
+```
 
-Even an offline PASS does **not** make the estimator paid-ready. DeepSeek provider-reported `usage.prompt_tokens` remains the final production accounting authority; live prompt-usage parity is a separate required gate and has not been run.
+The evidence proves:
+
+- all four unchanged official `test_encoding_dsv4.py` golden cases PASS;
+- pinned official encoder SHA256 `abc0d26120250dda0ae077dc64aa28836026e61e970854aaeb792445e6a0dde6`;
+- pinned official encoder-test SHA256 `c2bc54c4c934f5c64096bd9c555efa7d1ddf179c1eff58f01ceb2dcd60adcf28`;
+- benchmark wire case 1 renders byte-for-byte the official golden prompt;
+- both prompt hashes equal `9b366d9d2eac842a6e890594aac0b58648e5623717202b33497afadf03e26540`;
+- pinned tokenizer loads fully offline after bootstrap;
+- case-1 exact input count is `541` tokens;
+- with `max_tokens=128`, pre-dispatch envelope is `669` total tokens;
+- pinned tokenizer SHA256 is `8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf`.
+
+Offline PASS does **not** make the estimator paid-ready. DeepSeek provider-reported `usage.prompt_tokens` remains the final production accounting authority; live prompt-usage parity is a separate required gate and has not been run. The lock therefore deliberately remains:
+
+```text
+live_provider_prompt_usage_parity: false
+paid_ready: false
+production_blocker: LIVE_PROVIDER_PROMPT_USAGE_PARITY_NOT_RUN
+```
+
+A separate no-call verifier exists for a later authenticated capture; it cannot itself contact DeepSeek or spend model budget.
 
 Required property remains:
 
@@ -138,7 +159,7 @@ PHASE2_HARBOR_SUBSTRATE: PASS
 PHASE2_WINDOWS_PHYSICAL_HOST: PASS
 PHASE3A_MODEL_BUDGET_AUTHORITY: PASS
 PHASE3B_CROSS_PROCESS_PROXY_FIXTURE: PASS
-PHASE3B_DEEPSEEK_V4_ESTIMATOR_OFFLINE: IMPLEMENTED / CI_PENDING
+PHASE3B_DEEPSEEK_V4_ESTIMATOR_OFFLINE: PASS
 PHASE3B_LIVE_PROVIDER_PROMPT_USAGE_PARITY: NOT_RUN
 PHASE3B_PRODUCTION_PAID_READY: NO
 PHASE3C_ADCP_HARBOR_ADAPTER: NOT_IMPLEMENTED
