@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3_SHARED_MODEL_GATEWAY_AND_ADCP_ARM",
+  "status": "IN_PROGRESS",
+  "base_main": "5dc8aee59e1ea4b2e2e998d501faad30efc7cb81",
+  "primary_fairness_metric": "total_model_tokens",
+  "total_model_tokens_definition": "input_tokens + output_tokens",
+  "diagnostic_dimensions": [
+    "input_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "cache_tokens",
+    "cost_usd_micros",
+    "wall_time_seconds",
+    "requests"
+  ],
+  "adcp_runtime": {
+    "repository": "e-ComGen/autonomous-dev-control-plane",
+    "commit": "285702063815280398b95ba8696566259c8b5b34",
+    "runtime_entrypoint": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+    "integration": "existing-v2-runtime-role-ports",
+    "benchmark_owns_orchestration": false
+  },
+  "model_route": {
+    "required_for_stock_production": "shared_budget_gateway",
+    "required_for_adcp": "shared_budget_gateway",
+    "raw_upstream_key_enters_agent_container": false,
+    "streaming_qualified": false
+  },
+  "implemented": {
+    "shared_budget_ledger": true,
+    "concurrent_output_reservations": true,
+    "openai_compatible_non_streaming_proxy": true,
+    "authenticated_usage_snapshot": true,
+    "exact_model_gate": true,
+    "stock_production_gateway_only": true,
+    "phase2_fake_stock_route_preserved": true,
+    "adcp_thin_harbor_adapter": true,
+    "committed_candidate_patch_export": true,
+    "adcp_no_model_transport_workflow": true
+  },
+  "remaining_before_paid_ab": [
+    "shared_gateway_real_http_transport qualification with deterministic fake upstream",
+    "stock arm shared-gateway Harbor qualification",
+    "ADCP private pinned runtime integration qualification through the shared gateway",
+    "paired fairness-budget parity qualification",
+    "streaming qualification or explicit proof both arms run non-streaming",
+    "paid paired canary"
+  ],
+  "paid_model_experiment_run": false,
+  "adcp_superiority_claimed": false
+}
