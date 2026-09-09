@@ -38,6 +38,9 @@ class SystemAdapter(AdapterIdentity, Protocol):
 class SystemBindingValidator(AdapterIdentity, Protocol):
     """Capability that binds an adapter to an exact production implementation."""
 
+    production_system_id: str
+    production_version: str
+
     def validate_system_binding(
         self,
         system: SystemUnderTest,
@@ -53,6 +56,21 @@ class CommandSystemAdapter(SystemBindingValidator, Protocol):
     def prepare_command(self, invocation: Any, run_context: Any) -> CommandSpec: ...
 
     def parse_execution(self, execution: ExecutionResult) -> SystemObservation: ...
+
+
+@runtime_checkable
+class ReadOnlyAdapter(Protocol):
+    """Optional cache-safety capability."""
+
+    read_only: bool
+
+
+def require_system_adapter(adapter: object) -> SystemAdapter:
+    """Return the non-authoritative invocation capability or fail closed."""
+
+    if not isinstance(adapter, SystemAdapter):
+        raise TypeError("non-authoritative evaluation requires a SystemAdapter")
+    return adapter
 
 
 def require_command_system_adapter(adapter: object) -> CommandSystemAdapter:
