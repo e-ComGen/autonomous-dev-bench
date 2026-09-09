@@ -7,6 +7,10 @@ on:
       - "PHASE3D_DESIGN_DECISION.json"
       - "PHASE3D_DESIGN_RATIONALE.md"
       - "PHASE3D_EXPERIMENT_PLAN.json"
+      - "PHASE3D_EXPERIMENT_PLAN.prelock.json"
+      - "PHASE3D_SENSITIVITY_REPORT.json"
+      - "PHASE3D_DESIGN_DECISION_EVIDENCE.json"
+      - "PHASE3D_PAIR_SCHEDULE.lock.json"
       - "packages/benchmark_core/**"
       - "tools/phase3d_prepare_design_decision.py"
       - ".github/workflows/phase3d7-design-lock-candidate.yml"
@@ -24,24 +28,33 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e ".[dev]"
-      - name: Generate exact outcome-blind design artifacts
+      - name: Regenerate exact outcome-blind design artifacts
         run: >-
           python tools/phase3d_prepare_design_decision.py
           PHASE3D_DESIGN_SCENARIOS.json
           PHASE3D_DESIGN_DECISION.json
+          --plan PHASE3D_EXPERIMENT_PLAN.prelock.json
           --output-dir phase3d7-design
-      - name: Verify selected design summary
+      - name: Verify committed lock is exact replay
         shell: python
         run: |
           import json
           from pathlib import Path
 
-          root = Path("phase3d7-design")
-          plan = json.loads((root / "PHASE3D_EXPERIMENT_PLAN.locked.candidate.json").read_text())
-          evidence = json.loads((root / "PHASE3D6_DESIGN_DECISION_EVIDENCE.json").read_text())
-          schedule = json.loads((root / "PHASE3D_PAIR_SCHEDULE.candidate.json").read_text())
-          sensitivity = json.loads((root / "PHASE3D_SENSITIVITY_REPORT.json").read_text())
+          generated = Path("phase3d7-design")
+          plan = json.loads((generated / "PHASE3D_EXPERIMENT_PLAN.locked.candidate.json").read_text())
+          evidence = json.loads((generated / "PHASE3D6_DESIGN_DECISION_EVIDENCE.json").read_text())
+          schedule = json.loads((generated / "PHASE3D_PAIR_SCHEDULE.candidate.json").read_text())
+          sensitivity = json.loads((generated / "PHASE3D_SENSITIVITY_REPORT.json").read_text())
 
+          committed_plan = json.loads(Path("PHASE3D_EXPERIMENT_PLAN.json").read_text())
+          committed_evidence = json.loads(Path("PHASE3D_DESIGN_DECISION_EVIDENCE.json").read_text())
+          committed_sensitivity = json.loads(Path("PHASE3D_SENSITIVITY_REPORT.json").read_text())
+          schedule_lock = json.loads(Path("PHASE3D_PAIR_SCHEDULE.lock.json").read_text())
+
+          assert plan == committed_plan
+          assert sensitivity == committed_sensitivity
+          assert evidence == committed_evidence
           assert plan["status"] == "LOCKED"
           assert plan["design_paid_ready"] is True
           assert plan["execution"]["repeat_count_per_task"] == 37
@@ -51,8 +64,7 @@ jobs:
           assert plan["budget"]["max_requests_per_arm"] == 16
           assert plan["paid_paired_ab"] == "NOT_RUN"
           assert plan["winner"] == "UNKNOWN"
-          assert evidence["schedule_pair_count"] == 370
-          assert len(schedule["entries"]) == 370
+
           rows = {row["scenario_id"]: row for row in sensitivity["rows"]}
           assert rows["mde-10pp-conservative-discordance"]["repeat_count_per_task"] == 81
           assert rows["mde-15pp-conservative-discordance"]["repeat_count_per_task"] == 37
@@ -60,9 +72,15 @@ jobs:
           assert sensitivity["outcome_data_used"] is False
           assert sensitivity["paid_model_called"] is False
           assert sensitivity["automatic_scenario_selection"] is False
+
+          assert len(schedule["entries"]) == schedule_lock["pair_count"] == 370
+          assert schedule["design_identity"]["value"] == schedule_lock["design_identity"]
+          assert evidence["schedule_identity"]["value"] == schedule_lock["schedule_identity"]
+          assert schedule["entries"][0] == schedule_lock["first_entry"]
+          assert schedule["entries"][-1] == schedule_lock["last_entry"]
       - uses: actions/upload-artifact@v4
         with:
-          name: phase3d7-design-lock-candidate
+          name: phase3d7-design-lock-replay
           path: phase3d7-design/
           if-no-files-found: error
           retention-days: 30
