@@ -14,12 +14,12 @@ from typing import Iterable, Mapping
 
 from .experiment_preregistration import ExperimentDesignSnapshot
 from .identity import CanonicalModel, Sha256Digest, require_identifier
-
-
-ANALYSIS_TEST = "exact_mcnemar_two_sided"
-ANALYSIS_EFFECT_DIRECTION = "adcp_minus_stock"
-ANALYSIS_NULL_DISCORDANT_WIN_PROBABILITY = 0.5
-ANALYSIS_ALPHA = 0.05
+from .paired_analysis_contract import (
+    ANALYSIS_ALPHA,
+    ANALYSIS_EFFECT_DIRECTION,
+    ANALYSIS_NULL_DISCORDANT_WIN_PROBABILITY,
+    ANALYSIS_TEST,
+)
 
 
 class PairedAnalysisError(ValueError):
@@ -220,7 +220,8 @@ def audit_paired_ledger(
             raise PairedAnalysisError(f"pair {entry.pair_id} has multiple included attempts")
         if included:
             completed.append(entry.pair_id)
-    missing = tuple(entry.pair_id for entry in schedule.entries if entry.pair_id not in set(completed))
+    completed_ids = set(completed)
+    missing = tuple(entry.pair_id for entry in schedule.entries if entry.pair_id not in completed_ids)
     return PairedLedgerAudit(
         schedule_identity=schedule.content_digest,
         expected_pairs=len(schedule.entries),
