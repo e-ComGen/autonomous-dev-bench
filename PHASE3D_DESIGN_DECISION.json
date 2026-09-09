@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D6_EXPERIMENT_DESIGN_DECISION",
+  "selected_scenario_id": "mde-15pp-conservative-discordance",
+  "decision_reference": "PHASE3D_DESIGN_RATIONALE.md#selected-design",
+  "resource_caps": {
+    "total_model_token_cap_per_arm": 262144,
+    "input_token_cap_per_arm": 262144,
+    "output_token_cap_per_arm": 65536,
+    "max_requests_per_arm": 16,
+    "wall_time_seconds_per_arm": 600,
+    "patch_byte_cap_per_arm": 262144
+  },
+  "outcome_data_used": false,
+  "paid_model_called": false,
+  "automatic_scenario_selection": false
+}
