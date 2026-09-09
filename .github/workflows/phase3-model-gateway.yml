@@ -1,0 +1,42 @@
+name: phase3-model-gateway
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/phase3-model-gateway.yml"
+      - "packages/benchmark_core/benchmark_core/model_budget.py"
+      - "packages/benchmark_core/benchmark_core/model_gateway.py"
+      - "tools/model_budget_gateway.py"
+      - "tools/verify_model_gateway_transport.py"
+      - "tests/core/test_model_budget.py"
+      - "tests/core/test_model_gateway.py"
+
+permissions:
+  contents: read
+
+jobs:
+  fake-upstream-http-transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install benchmark tests
+        run: python -m pip install -e '.[dev]'
+      - name: Run unit accounting tests
+        run: pytest -q tests/core/test_model_budget.py tests/core/test_model_gateway.py
+      - name: Qualify authenticated HTTP transport against deterministic fake upstream
+        run: python tools/verify_model_gateway_transport.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-model-gateway-${{ github.run_id }}
+          path: artifacts/harbor-phase3/**
+          if-no-files-found: warn
+          retention-days: 14
