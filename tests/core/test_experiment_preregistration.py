@@ -14,8 +14,7 @@ from benchmark_core.paired_analysis import PairedExperimentSchedule
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = (
-    "PHASE3D_EXPERIMENT_PLAN.json",
+SUPPORT_SOURCES = (
     "DEEPSEEK_HARNESS.lock.json",
     "ADCP.lock.json",
     "HARBOR.lock.json",
@@ -24,7 +23,11 @@ SOURCES = (
 
 
 def _copy_design_sources(tmp_path: Path) -> None:
-    for relative in SOURCES:
+    shutil.copyfile(
+        ROOT / "PHASE3D_EXPERIMENT_PLAN.prelock.json",
+        tmp_path / "PHASE3D_EXPERIMENT_PLAN.json",
+    )
+    for relative in SUPPORT_SOURCES:
         source = ROOT / relative
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -57,25 +60,30 @@ def _make_ready(plan: dict[str, object], *, repeats: int = 2) -> None:
     plan["design_blockers"] = []
 
 
-def test_current_repository_design_is_structurally_valid_but_cost_and_repeat_blocked() -> None:
+def test_current_repository_design_is_locked_and_compiles_exact_schedule() -> None:
     snapshot = ExperimentDesignSnapshot.from_repository(ROOT)
 
-    assert snapshot.design_paid_ready is False
+    assert snapshot.design_paid_ready is True
     assert len(snapshot.task_ids) == 10
     assert snapshot.task_ids[0] == "astropy__astropy-12907"
     assert snapshot.task_ids[-1] == "sympy__sympy-20590"
-    assert snapshot.repeat_count_per_task is None
-    assert snapshot.required_completed_pairs is None
-    assert snapshot.total_model_token_cap_per_arm is None
-    assert snapshot.design_blockers == (
-        "EXPERIMENT_PLAN_NOT_LOCKED",
-        "REPEAT_COUNT_NOT_PRECOMMITTED",
-        "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
-        "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED",
-    )
+    assert snapshot.repeat_count_per_task == 37
+    assert snapshot.required_completed_pairs == 370
+    assert snapshot.total_model_token_cap_per_arm == 262144
+    assert snapshot.input_token_cap_per_arm == 262144
+    assert snapshot.output_token_cap_per_arm == 65536
+    assert snapshot.max_requests_per_arm == 16
+    assert snapshot.wall_time_seconds_per_arm == 600
+    assert snapshot.patch_byte_cap_per_arm == 262144
+    assert snapshot.design_blockers == ()
     assert snapshot.expected_pair_id("psf__requests-1142", 0) == "phase3d-psf__requests-1142-r0"
-    assert snapshot.expected_seed("psf__requests-1142", 0) == snapshot.expected_seed("psf__requests-1142", 0)
     assert snapshot.expected_seed("psf__requests-1142", 0) != snapshot.expected_seed("psf__requests-1142", 1)
+
+    schedule = PairedExperimentSchedule.from_design(snapshot)
+    assert len(schedule.entries) == 370
+    assert schedule.design_identity == snapshot.plan_digest
+    assert schedule.entries[0].pair_id == "phase3d-astropy__astropy-12907-r0"
+    assert schedule.entries[-1].pair_id == "phase3d-sympy__sympy-20590-r36"
 
 
 def test_corpus_drift_is_invalid_not_a_soft_blocker(tmp_path: Path) -> None:
