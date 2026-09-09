@@ -4,9 +4,9 @@ One gateway instance represents one experimental arm/trial budget. Agent
 containers receive only a scoped client token and this gateway's URL. The
 upstream provider credential remains controller-side.
 
-Streaming is deliberately rejected in the first Phase 3 slice because reliable
-usage settlement must be qualified before streaming can be admitted into a
-causal budget comparison.
+Streaming is supported only when the request explicitly asks the provider to
+include terminal usage. The first qualified implementation buffers the original
+SSE bytes, settles authoritative usage, then returns those bytes unchanged.
 """
 
 from __future__ import annotations
@@ -125,6 +125,33 @@ def parse_openai_usage(payload: Mapping[str, object]) -> GatewayUsage:
     )
 
 
+def parse_openai_sse_usage(body: bytes) -> GatewayUsage:
+    """Extract terminal usage from an OpenAI-compatible SSE response."""
+
+    normalized = body.replace(b"\r\n", b"\n")
+    usage_payload: Mapping[str, object] | None = None
+    saw_done = False
+    for event in normalized.split(b"\n\n"):
+        data_lines = [line[5:].lstrip() for line in event.split(b"\n") if line.startswith(b"data:")]
+        if not data_lines:
+            continue
+        data = b"\n".join(data_lines).strip()
+        if data == b"[DONE]":
+            saw_done = True
+            continue
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"provider SSE contains invalid JSON data: {error}") from error
+        if isinstance(payload, dict) and isinstance(payload.get("usage"), dict):
+            usage_payload = payload
+    if not saw_done:
+        raise ValueError("provider SSE ended without [DONE]")
+    if usage_payload is None:
+        raise ValueError("provider SSE ended without terminal usage")
+    return parse_openai_usage(usage_payload)
+
+
 def _join_upstream_path(base_url: str, request_path: str) -> str:
     base = base_url.rstrip("/")
     path = request_path.split("?", 1)[0]
@@ -159,6 +186,7 @@ class SharedModelGateway:
             {
                 "model": self.config.expected_model,
                 "model_route": "shared_budget_gateway",
+                "streaming_mode": "buffered_sse_usage_accounted",
                 "pricing": {
                     "input_usd_per_million": self.config.pricing.input_usd_per_million,
                     "output_usd_per_million": self.config.pricing.output_usd_per_million,
@@ -181,8 +209,11 @@ class SharedModelGateway:
             return self._error(400, f"invalid JSON request: {error}")
         if not isinstance(request_payload, dict):
             return self._error(400, "model request must be a JSON object")
-        if request_payload.get("stream") is True:
-            return self._error(400, "streaming is not qualified by Phase 3 shared budget gateway")
+        is_stream = request_payload.get("stream") is True
+        if is_stream:
+            stream_options = request_payload.get("stream_options")
+            if not isinstance(stream_options, dict) or stream_options.get("include_usage") is not True:
+                return self._error(400, "streaming requires stream_options.include_usage=true for exact accounting")
         if request_payload.get("model") != self.config.expected_model:
             return self._error(400, "model identity differs from the experiment manifest")
 
@@ -205,7 +236,7 @@ class SharedModelGateway:
             headers={
                 "Authorization": f"Bearer {self.config.upstream_api_key}",
                 "Content-Type": content_type or "application/json",
-                "Accept": "application/json",
+                "Accept": "text/event-stream" if is_stream else "application/json",
             },
             method="POST",
         )
@@ -226,10 +257,15 @@ class SharedModelGateway:
             return status, response_body, response_type
 
         try:
-            provider_payload = json.loads(response_body.decode("utf-8"))
-            if not isinstance(provider_payload, dict):
-                raise ValueError("provider response is not a JSON object")
-            usage = parse_openai_usage(provider_payload)
+            if is_stream:
+                if "text/event-stream" not in response_type.lower():
+                    raise ValueError(f"streaming provider returned unexpected content type {response_type!r}")
+                usage = parse_openai_sse_usage(response_body)
+            else:
+                provider_payload = json.loads(response_body.decode("utf-8"))
+                if not isinstance(provider_payload, dict):
+                    raise ValueError("provider response is not a JSON object")
+                usage = parse_openai_usage(provider_payload)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             self.ledger.cancel(ticket)
             self.ledger.invalidate_accounting(str(error))
