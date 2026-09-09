@@ -8,7 +8,7 @@ parity call; otherwise live readiness is BLOCKED and PRODUCT READY is NO.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import importlib.metadata
 import json
 import os
@@ -16,10 +16,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-from typing import Iterable
 
 
-BENCH_REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-bench.git"
 ADCP_REPOSITORY = "https://github.com/e-ComGen/autonomous-dev-control-plane.git"
 DSH_REPOSITORY = "https://github.com/deepseek-ai/deepseek-harness.git"
 HARBOR_REPOSITORY = "https://github.com/harbor-framework/harbor.git"
@@ -94,17 +92,23 @@ def read_json(path: Path) -> dict[str, object]:
 def test_phase3d_lock(root: Path, python: str, output: Path) -> None:
     if output.exists():
         shutil.rmtree(output)
-    command = [
-        python,
-        "tools/phase3d_prepare_design_decision.py",
-        "PHASE3D_DESIGN_SCENARIOS.json",
-        "PHASE3D_DESIGN_DECISION.json",
-        "--plan",
-        "PHASE3D_EXPERIMENT_PLAN.prelock.json",
-        "--output-dir",
-        str(output),
-    ]
-    require_ok(run(command, cwd=root, timeout=600), "Phase 3D lock replay")
+    require_ok(
+        run(
+            [
+                python,
+                "tools/phase3d_prepare_design_decision.py",
+                "PHASE3D_DESIGN_SCENARIOS.json",
+                "PHASE3D_DESIGN_DECISION.json",
+                "--plan",
+                "PHASE3D_EXPERIMENT_PLAN.prelock.json",
+                "--output-dir",
+                str(output),
+            ],
+            cwd=root,
+            timeout=600,
+        ),
+        "Phase 3D lock replay",
+    )
     plan = read_json(output / "PHASE3D_EXPERIMENT_PLAN.locked.candidate.json")
     committed_plan = read_json(root / "PHASE3D_EXPERIMENT_PLAN.json")
     evidence = read_json(output / "PHASE3D6_DESIGN_DECISION_EVIDENCE.json")
@@ -154,30 +158,31 @@ def test_adcp_real_binding(root: Path, python: str, adcp_root: Path, output: Pat
 
 def wsl_docker_check() -> str:
     if os.name != "nt":
-        result = run(["docker", "info"], timeout=120)
-        return require_ok(result, "Docker Engine")
+        return require_ok(run(["docker", "info"], timeout=120), "Docker Engine")
     if shutil.which("wsl.exe") is None:
         raise RuntimeError("WSL is not installed")
-    result = run(["wsl.exe", "-e", "sh", "-lc", "docker info >/dev/null 2>&1 && docker version --format '{{.Server.Version}}'"], timeout=120)
-    return require_ok(result, "WSL2 Docker Engine").strip()
+    return require_ok(
+        run(
+            ["wsl.exe", "-e", "sh", "-lc", "docker info >/dev/null 2>&1 && docker version --format '{{.Server.Version}}'"],
+            timeout=120,
+        ),
+        "WSL2 Docker Engine",
+    ).strip()
 
 
 def live_parity(root: Path, python: str, artifact_root: Path) -> str:
-    key = os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY", "").strip()
-    if not key:
+    if not os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY", "").strip():
         raise RuntimeError("AUTOBENCH_DEEPSEEK_API_KEY is not set")
     cache = artifact_root / "deepseek-estimator-cache"
     cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    bootstrap = [
-        python,
-        "-c",
+    bootstrap_code = (
         "from benchmark_core.deepseek_v4_estimator import DeepSeekV4RequestEstimator; "
-        "DeepSeekV4RequestEstimator.from_huggingface_revision(cache_dir=r'" + str(cache) + "', allow_network=True); "
-        "print('PINNED_ESTIMATOR_ASSETS_READY')",
-    ]
-    require_ok(run(bootstrap, cwd=root, env=env, timeout=900), "DeepSeek V4 estimator bootstrap")
+        f"DeepSeekV4RequestEstimator.from_huggingface_revision(cache_dir={str(cache)!r}, allow_network=True); "
+        "print('PINNED_ESTIMATOR_ASSETS_READY')"
+    )
+    require_ok(run([python, "-c", bootstrap_code], cwd=root, env=env, timeout=900), "DeepSeek V4 estimator bootstrap")
     capture = artifact_root / "deepseek-live-capture.json"
     require_ok(
         run(
@@ -188,11 +193,11 @@ def live_parity(root: Path, python: str, artifact_root: Path) -> str:
         ),
         "minimal official DeepSeek live capture",
     )
-    parity = require_ok(
+    parity_text = require_ok(
         run([python, "tools/verify_deepseek_v4_usage_parity.py", str(capture), "--cache-dir", str(cache)], cwd=root, env=env, timeout=180),
         "DeepSeek exact prompt-token parity",
     )
-    value = json.loads(parity)
+    value = json.loads(parity_text)
     if value.get("status") != "PASS" or value.get("exact_match") is not True:
         raise RuntimeError("DeepSeek live prompt-token parity is not exact")
     return f"prompt_tokens={value['provider_prompt_tokens']} exact_match=true"
@@ -214,22 +219,20 @@ def main() -> int:
     checks: list[Check] = []
     blockers: list[str] = []
 
-    locks = {
-        "adcp": read_json(root / "ADCP.lock.json"),
-        "dsh": read_json(root / "DEEPSEEK_HARNESS.lock.json"),
-        "harbor": read_json(root / "HARBOR.lock.json"),
-        "tasks": read_json(root / "migration/swebench_v5_verified_parity.json"),
-    }
+    adcp_lock = read_json(root / "ADCP.lock.json")
+    dsh_lock = read_json(root / "DEEPSEEK_HARNESS.lock.json")
+    harbor_lock = read_json(root / "HARBOR.lock.json")
+    task_manifest = read_json(root / "migration/swebench_v5_verified_parity.json")
+    plan = read_json(root / "PHASE3D_EXPERIMENT_PLAN.json")
+    task_pin = task_manifest.get("task_repo_commit") or task_manifest.get("source_commit")
+    if not isinstance(task_pin, str) or not task_pin:
+        task_pin = plan["corpus"]["task_repo_commit"]
     pins = {
-        "adcp": str(locks["adcp"]["commit"]),
-        "dsh": str(locks["dsh"]["qualification_reference"]["commit"]),
-        "harbor": str(locks["harbor"]["commit"]),
-        "tasks": str(locks["tasks"].get("task_repo_commit") or locks["tasks"].get("source_commit") or ""),
+        "adcp": str(adcp_lock["commit"]),
+        "dsh": str(dsh_lock["qualification_reference"]["commit"]),
+        "harbor": str(harbor_lock["commit"]),
+        "tasks": str(task_pin),
     }
-    if not pins["tasks"]:
-        plan = read_json(root / "PHASE3D_EXPERIMENT_PLAN.json")
-        pins["tasks"] = str(plan["corpus"]["task_repo_commit"])
-
     repos = {
         "adcp": (ADCP_REPOSITORY, workspace / "autonomous-dev-control-plane"),
         "dsh": (DSH_REPOSITORY, workspace / "deepseek-harness"),
@@ -246,7 +249,7 @@ def main() -> int:
 
     try:
         observed = importlib.metadata.version("deepseek-harness-sdk")
-        expected = str(locks["dsh"]["sdk"]["version"])
+        expected = str(dsh_lock["sdk"]["version"])
         if observed != expected:
             raise RuntimeError(f"expected {expected}, installed {observed}")
         checks.append(Check("DEEPSEEK HARNESS SDK", "PASS", observed))
@@ -292,9 +295,6 @@ def main() -> int:
         checks.append(Check("HARBOR / DOCKER", "FAIL", str(error)))
         blockers.append(f"HARBOR_DOCKER: {error}")
 
-    # Existing accepted tests cover Stock Harness + Harbor workspace/receipt and
-    # the ADCP Harbor process contract. Run them locally as contract seams; the
-    # real ADCP/DSH runtime above independently covers the production semantic side.
     try:
         require_ok(
             run(
@@ -318,15 +318,12 @@ def main() -> int:
         checks.append(Check("DEEPSEEK LIVE PARITY", "BLOCKED", str(error)))
         blockers.append(f"DEEPSEEK_LIVE_PARITY: {error}")
 
-    # A local verdict requires all runtime checks above. Repository locks remain
-    # immutable preregistration evidence; the local live capture is not silently
-    # written back into Git.
     product_ready = bool(checks) and not blockers and all(check.passed for check in checks)
     summary = {
         "schema_version": 1,
         "scope": "AUTONOMOUS_DEV_BENCH_PRODUCT_READINESS_LOCAL",
         "product_ready": product_ready,
-        "checks": [check.__dict__ for check in checks],
+        "checks": [asdict(check) for check in checks],
         "blockers": blockers,
         "paid_paired_ab_started": False,
         "winner": "UNKNOWN",
