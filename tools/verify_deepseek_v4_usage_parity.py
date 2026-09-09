@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 from pathlib import Path
 
@@ -23,6 +25,16 @@ paid readiness by itself.
 """
 
 
+def _estimate_without_console_noise(request: dict[str, object], cache_dir: Path):
+    sink = io.StringIO()
+    with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+        estimator = DeepSeekV4RequestEstimator.from_huggingface_revision(
+            cache_dir=cache_dir,
+            allow_network=False,
+        )
+        return estimator.estimate(request)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("capture", type=Path)
@@ -42,11 +54,7 @@ def main() -> int:
     if isinstance(prompt_tokens, bool) or not isinstance(prompt_tokens, int) or prompt_tokens < 0:
         raise SystemExit("capture usage requires non-negative prompt_tokens")
 
-    estimator = DeepSeekV4RequestEstimator.from_huggingface_revision(
-        cache_dir=args.cache_dir,
-        allow_network=False,
-    )
-    estimated = estimator.estimate(request)
+    estimated = _estimate_without_console_noise(request, args.cache_dir)
     result = {
         "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
         "status": "PASS" if estimated.input_tokens == prompt_tokens else "FAIL",
