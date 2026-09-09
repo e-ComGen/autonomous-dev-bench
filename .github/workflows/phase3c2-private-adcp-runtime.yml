@@ -1,0 +1,94 @@
+name: phase3c2-private-adcp-runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-private-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ADCP_REPO_TOKEN: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+      ADCP_COMMIT: 285702063815280398b95ba8696566259c8b5b34
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Require explicit private-repository credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ADCP_REPO_TOKEN:-}" ]; then
+            echo "AUTOBENCH_ADCP_REPO_TOKEN is not configured; private ADCP qualification remains NOT_RUN." >&2
+            exit 2
+          fi
+
+      - name: Install benchmark test dependencies
+        run: python -m pip install -e '.[dev]'
+
+      - name: Checkout exact private ADCP pin
+        uses: actions/checkout@v4
+        with:
+          repository: e-ComGen/autonomous-dev-control-plane
+          ref: 285702063815280398b95ba8696566259c8b5b34
+          token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+          path: .phase3c2-private-adcp
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify immutable private checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(git -C .phase3c2-private-adcp rev-parse HEAD)"
+          test "$observed" = "$ADCP_COMMIT"
+          test -z "$(git -C .phase3c2-private-adcp status --porcelain)"
+
+      - name: Qualify pinned assured runtime through its test Harness bridge
+        shell: bash
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/phase3c2-private-adcp
+          python tools/qualify_phase3c_private_adcp.py \
+            --adcp-path .phase3c2-private-adcp \
+            --evidence artifacts/phase3c2-private-adcp/PHASE3C2_PRIVATE_ADCP.json
+
+      - name: Assert evidence cannot overclaim production readiness
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          p = Path('artifacts/phase3c2-private-adcp/PHASE3C2_PRIVATE_ADCP.json')
+          evidence = json.loads(p.read_text(encoding='utf-8'))
+          assert evidence['status'] == 'PASS'
+          assert evidence['target']['commit'] == '285702063815280398b95ba8696566259c8b5b34'
+          assert evidence['private_runtime_loaded'] is True
+          assert evidence['assured_runtime_loaded'] is True
+          assert evidence['harness_bridge_loaded'] is True
+          assert evidence['harness_binding'] == 'fixture-only.not-the-external-kit/1'
+          assert evidence['canonical_external_harness_protocol_claimed'] is False
+          assert evidence['paid_model_called'] is False
+          assert evidence['candidate_ready'] is True
+          assert evidence['task_completed'] is False
+          assert evidence['production_ready'] is False
+          assert evidence['production_blocker'] == 'PINNED_PRIVATE_ADCP_REAL_PROTOCOL_BINDING_NOT_QUALIFIED'
+          assert evidence['repair_count'] >= 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3c2-private-adcp-${{ github.run_id }}
+          path: artifacts/phase3c2-private-adcp/**
+          if-no-files-found: warn
+          retention-days: 30
