@@ -33,9 +33,11 @@ from .model_gateway import (
     ModelGatewayHTTPServer,
     ModelGatewayPricing,
     SharedModelGateway,
+    parse_openai_sse_usage,
     parse_openai_usage,
 )
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
+from .paired_experiment import PairedExperimentManifest
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
 from .runner import BenchmarkSuite, ExperimentRunner, RunContext, SystemAdapter
@@ -72,6 +74,7 @@ __all__ = [
     "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
+    "PairedExperimentManifest",
     "ProjectEnvironmentBuilder",
     "ProjectSpec",
     "RunContext",
@@ -99,6 +102,7 @@ __all__ = [
     "load_scenario",
     "load_suite",
     "load_task",
+    "parse_openai_sse_usage",
     "parse_openai_usage",
     "require_v5",
     "write_predictions",
