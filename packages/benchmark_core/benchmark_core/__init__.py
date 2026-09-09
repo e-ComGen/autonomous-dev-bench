@@ -48,6 +48,19 @@ from .model_proxy import (
 )
 from .model_proxy_http import BudgetProxyHttpConfig, BudgetProxyHttpServer
 from .overlay import InvalidExperiment, ScenarioCheckpointMaterializer
+from .paired_experiment import (
+    ArmExecutionReceipt,
+    DryRunModelCallForbidden,
+    ExperimentArm,
+    PairFairnessError,
+    PaidAdmissionSnapshot,
+    PaidExperimentBlocked,
+    PairedArmExecutor,
+    PairedExperimentController,
+    PairedExperimentPlan,
+    PairedRunReceipt,
+    require_causal_pair,
+)
 from .project import ProjectSpec
 from .result import HardGate, OracleResult, RunResult, RunStatus, StageResult, SuiteResult, SystemObservation
 from .runner import BenchmarkSuite, ExperimentRunner, RunContext, SystemAdapter
@@ -58,6 +71,7 @@ from .task import TaskSpec
 
 __all__ = [
     "AgentManifest",
+    "ArmExecutionReceipt",
     "BenchmarkSuite",
     "BudgetAccountingError",
     "BudgetExceeded",
@@ -76,10 +90,12 @@ __all__ = [
     "DeepSeekV4EstimatorIdentity",
     "DeepSeekV4RequestEstimator",
     "DockerSandboxProvider",
+    "DryRunModelCallForbidden",
     "EnvironmentBuildResult",
     "ExactRequestBudgetEstimator",
     "ExactTokenEstimateUnavailable",
     "ExecutionManifest",
+    "ExperimentArm",
     "ExperimentManifest",
     "ExperimentRunner",
     "ExperimentSpec",
@@ -93,6 +109,13 @@ __all__ = [
     "ModelUsage",
     "OfficialSwebenchV5",
     "OracleResult",
+    "PairFairnessError",
+    "PaidAdmissionSnapshot",
+    "PaidExperimentBlocked",
+    "PairedArmExecutor",
+    "PairedExperimentController",
+    "PairedExperimentPlan",
+    "PairedRunReceipt",
     "PinnedRequestEstimator",
     "ProjectEnvironmentBuilder",
     "ProjectSpec",
@@ -123,6 +146,7 @@ __all__ = [
     "load_scenario",
     "load_suite",
     "load_task",
+    "require_causal_pair",
     "require_v5",
     "write_predictions",
 ]
