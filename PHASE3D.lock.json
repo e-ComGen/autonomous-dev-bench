@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_PAIRED_CAUSAL_EXPERIMENT_CONTROLLER",
+  "controller": {
+    "implementation": "benchmark_core.paired_experiment.PairedExperimentController",
+    "pair_plan": "benchmark_core.paired_experiment.PairedExperimentPlan",
+    "paid_admission": "benchmark_core.paired_experiment.PaidAdmissionSnapshot",
+    "order_algorithm": "sha256-parity-v1",
+    "status": "PASS",
+    "qualification": {
+      "workflow_run_id": 34357064416,
+      "head_sha": "00b734b816262b4525518baea4314fdb9be6bc2b",
+      "firewall": "PASS",
+      "ubuntu_python": ["3.11", "3.12", "3.13"],
+      "windows_python": ["3.11", "3.12", "3.13"],
+      "pytest": "PASS",
+      "build": "PASS",
+      "model_called": false,
+      "paid_model_called": false
+    }
+  },
+  "causal_invariants": {
+    "same_task": true,
+    "same_model": true,
+    "same_provider_route": true,
+    "same_budget": true,
+    "same_execution_substrate": true,
+    "same_repeat_index": true,
+    "same_seed": true,
+    "agent_is_intended_treatment_difference": true,
+    "arm_order_precommitted": true,
+    "receipt_binds_exact_manifest_identity": true,
+    "paid_admission_precedes_any_arm_execution": true,
+    "dry_run_model_calls_forbidden": true
+  },
+  "target": {
+    "arm_a": "stock_deepseek_harness",
+    "arm_b": "adcp_zone_development",
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek-official",
+    "official_grading_authority": "swebench-v5",
+    "execution_substrate": "harbor-0.22.0"
+  },
+  "paid_admission": {
+    "status": "BLOCKED",
+    "paid_ready": false,
+    "blockers": [
+      "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS",
+      "DEEPSEEK_ESTIMATOR_NOT_PAID_READY",
+      "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS",
+      "ADCP_NOT_PAID_READY"
+    ]
+  },
+  "paid_paired_ab": "NOT_RUN",
+  "winner": "UNKNOWN"
+}
