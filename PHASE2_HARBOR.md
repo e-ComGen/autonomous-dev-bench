@@ -17,75 +17,87 @@ Python >= 3.12
 
 Harbor remains optional so the benchmark core stays installable/testable on Python 3.11.
 
-## Windows-first host model
+## Accepted Windows-first host model
 
-The primary physical host for this project is Windows. The exact Harbor `0.22.0` pin does not expose a dedicated native-Windows execution environment, so Phase 2 does not pretend that official SWE-bench tasks are Windows-native.
+The intended physical benchmark host is Windows. Exact Harbor `0.22.0` has no dedicated native-Windows execution environment, so official SWE-bench tasks remain Linux-container based.
 
-The supported primary path is:
+The accepted primary path is:
 
 ```text
 Windows physical PC
-  -> self-bootstrapping PowerShell entrypoint
-  -> WSL2 / Ubuntu 24.04 controller boundary
-  -> Docker Desktop WSL2 Linux engine
+  -> PowerShell controller
+  -> WSL2 / Ubuntu 24.04
+  -> Docker Engine inside WSL2
   -> Harbor Docker environment
-  -> Linux task container
+  -> Linux benchmark task container
   -> official SWE-bench-compatible semantics
 ```
 
-This means Linux is a property of the isolated benchmark task container, not a requirement for a separate physical machine. No cloud provider is required.
+Docker Desktop is not required for the accepted Phase 2 path. Daytona remains optional.
 
-The host entrypoint is intentionally self-bootstrapping. It does not merely diagnose missing prerequisites. It automatically:
+The Windows bootstrap/qualification policy is deliberately non-persistent:
 
-- elevates itself through UAC when first-time Windows feature installation needs administrator rights;
-- installs/updates WSL2;
-- installs `Ubuntu-24.04` as the qualification distro when missing;
-- converts/selects it as WSL2 and initializes it non-interactively;
-- installs `git`, CA certificates, `curl`, Python 3.12, venv and pip inside the distro;
-- installs Docker Desktop automatically when missing;
-- prefers the `Docker.DockerDesktop` winget package when winget exists;
-- falls back to Docker's official x86_64 Windows installer when winget is unavailable;
-- installs Docker Desktop with the WSL2 backend and Linux-container path;
-- starts Docker Desktop and waits for the Linux engine and WSL integration;
-- fetches the exact Harbor source commit into an isolated WSL cache/venv;
-- runs the accepted no-model Harbor substrate trial and validator;
-- emits immutable host/trial evidence under `artifacts/harbor-phase2/windows-host/`.
+- no `RunOnce` continuation;
+- no Startup entry;
+- no scheduled task;
+- no automatic reboot;
+- no Windows background persistence;
+- if a reboot is required, the run stops and the same bootstrap is launched manually again;
+- Docker Engine is installed inside the qualification WSL2 distro;
+- Docker/containerd autostart is disabled for the qualification path;
+- the Docker daemon is started only for the qualification session when needed.
 
-Normal invocation:
+The qualification does not call a model and requires no model/API credential.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\qualify_windows_host.ps1
+## Accepted Windows physical-host evidence
+
+A real run on the intended physical Windows machine completed successfully on 2026-09-09.
+
+Observed qualification result:
+
+```text
+scope: PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION
+status: PASS
+physical_host_os: windows
+controller_boundary: powershell_to_wsl2
+execution_backend: wsl2_docker_engine
+task_environment_os: linux_container
+native_windows_harbor_claimed: false
+official_swebench_semantics_preserved: true
+bootstrap_mode: manual_reboot_no_persistence
+persistence_created: false
+automatic_reboot: false
+model_called: false
 ```
 
-For a fully unattended first-time WSL bootstrap, including an automatic reboot when Windows requires one:
+Runtime identity:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\qualify_windows_host.ps1 -AutoReboot
+```text
+WSL distro: Ubuntu-24.04
+WSL kernel: 6.18.33.2-microsoft-standard-WSL2
+Python: 3.12.3
+Docker Engine: 29.8.0
+Container probe: Linux x86_64
+Harbor version: 0.22.0
+Harbor commit: d4509bbd3804f4b408527f476d764dacd988791d
+Harbor trial reward: 1.0
 ```
 
-Before a required reboot the script registers a per-user `RunOnce` continuation. After the next sign-in it launches the same bootstrap again, self-elevates if necessary, and continues rather than asking the user to redo installation steps manually.
+Evidence integrity:
 
-The script does not silently install benchmark Python packages into the repository checkout. Harbor and test dependencies live under the WSL user cache/venv, while the checkout is referenced through `PYTHONPATH`.
+```text
+host_evidence_sha256:
+328a807a699918ab69f6d49a88a6b1b889e39e6d52343c310325f4caf11ea917
 
-The completed gate still fails closed unless all of these are true:
+trial_tree_sha256:
+e98ea3e812228657c65c4929d19f83388905ca6bfbb293c143a540c0366d909d
+```
 
-- physical host is Windows;
-- selected qualification distro is WSL2;
-- Docker Desktop is reachable from Windows;
-- Docker reports `OSType=linux`;
-- a real Linux container executes successfully;
-- Docker is reachable inside the selected WSL2 distro;
-- Python >=3.12 is available inside WSL2;
-- exact Harbor version and source commit match `HARBOR.lock.json`;
-- the accepted no-model Harbor substrate trial passes through Docker;
-- the existing independent substrate validator passes;
-- final evidence is emitted as `artifacts/harbor-phase2/windows-host/PHASE2_WINDOWS_HOST.json`.
-
-The qualification does not call a model and does not require any API key.
+The accepted run also passed the existing independent substrate validator and emitted `artifacts/harbor-phase2/windows-host/PHASE2_WINDOWS_HOST.json`.
 
 ## Accepted internal gates
 
-The following capabilities have real GitHub Actions evidence and are accepted:
+The following capabilities have real evidence and are accepted:
 
 - Harbor external `BaseAgent` boundary and workspace mutation;
 - timeout/lifecycle handling;
@@ -96,7 +108,8 @@ The following capabilities have real GitHub Actions evidence and are accepted:
 - Stock DeepSeek Harness transport through Harbor using a deterministic fake model;
 - exact DeepSeek Harness wheel/runtime identity and token/request accounting;
 - immutable content-addressed trial export into benchmark CAS;
-- Harbor patch transport followed by independent official SWE-bench v5 re-grade.
+- Harbor patch transport followed by independent official SWE-bench v5 re-grade;
+- physical Windows host -> WSL2 -> Docker Engine -> Harbor qualification.
 
 Key accepted runs:
 
@@ -129,29 +142,21 @@ Harbor -> official SWE-bench v5 transport re-grade:
   boundary status PASS
 ```
 
-The official re-grade workflow is frozen to `workflow_dispatch` after acceptance so later host/documentation commits do not repeatedly rebuild SWE-bench images.
+The official re-grade workflow remains frozen to `workflow_dispatch` after acceptance so later documentation/host commits do not repeatedly rebuild SWE-bench images.
 
 ## Patch-boundary correction
 
-Qualification found a real transport bug: a Harbor environment can contain pre-existing untracked/generated files before the agent runs. Exporting all untracked paths produced a contaminated patch.
+Qualification found a real transport bug: a Harbor environment can already contain untracked/generated files before the agent runs. Exporting all untracked paths contaminated a submission with unrelated generated content.
 
-`HarborWorkspaceFacade` now records the baseline untracked set before agent execution. Final patch export contains tracked changes plus only newly-created untracked paths. Dirty tracked baselines fail closed. Regression coverage preserves this invariant.
+`HarborWorkspaceFacade` snapshots baseline untracked paths before agent execution. Final patch export contains tracked changes plus only newly-created untracked paths. Dirty tracked baselines fail closed. Regression coverage preserves this invariant.
 
-## Optional cloud challenger
+## Optional challengers
 
-Daytona remains pinned only as an optional remote-provider challenger. It is not a Phase 2 requirement, no `DAYTONA_API_KEY` is required for the Windows-first path, and an unrun Daytona workflow does not block Phase 2 acceptance.
+Docker Desktop remains an optional Windows backend profile, not the accepted Phase 2 requirement.
+
+Daytona remains pinned only as an optional remote-provider challenger. It is not a Phase 2 requirement, no `DAYTONA_API_KEY` is required for the accepted Windows path, and an unrun Daytona workflow does not block Phase 2 acceptance.
 
 ## Phase 2 exit
-
-The only host-specific evidence still required is a real run on the intended Windows PC producing:
-
-```text
-scope: PHASE2_WINDOWS_PHYSICAL_HOST_HARBOR_DOCKER_QUALIFICATION
-status: PASS
-physical_host_os: windows
-execution_backend: docker_desktop_linux_engine
-model_called: false
-```
 
 Current state:
 
@@ -161,9 +166,9 @@ LIFECYCLE_CANCELLATION_NETWORK_RESOURCES: PASS
 STOCK_DEEPSEEK_HARBOR_TRANSPORT: PASS
 IMMUTABLE_CAS_EXPORT: PASS
 OFFICIAL_SWEBENCH_V5_REGRADE_BOUNDARY: PASS
-WINDOWS_PHYSICAL_HOST: NOT_RUN
+WINDOWS_PHYSICAL_HOST: PASS
 OPTIONAL_DAYTONA_CHALLENGER: NOT_REQUIRED
-PHASE2: BLOCKED_ONLY_ON_WINDOWS_HOST_QUALIFICATION
+PHASE2: PASS
 ```
 
-The shared ModelBudgetGateway and ADCPAgent remain Phase 3 work.
+Phase 2 is complete. The shared ModelBudgetGateway and ADCPAgent remain Phase 3 work.
