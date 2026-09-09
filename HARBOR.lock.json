@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "repository": "harbor-framework/harbor",
   "version": "0.22.0",
   "commit": "d4509bbd3804f4b408527f476d764dacd988791d",
@@ -7,15 +7,25 @@
   "role": "replaceable_execution_orchestration_substrate",
   "grading_authority": "official_swebench_v5",
   "phase": "PHASE2_SUBSTRATE_QUALIFICATION",
-  "primary_host_profile": "windows_wsl2_docker_desktop",
+  "primary_host_profile": "windows_wsl2_docker_engine",
   "host_profiles": {
+    "windows_wsl2_docker_engine": {
+      "physical_host_os": "windows",
+      "controller_boundary": "powershell_to_wsl2",
+      "execution_backend": "wsl2_docker_engine",
+      "task_environment_os": "linux_container",
+      "native_windows_harbor": false,
+      "official_swebench_semantics_preserved": true,
+      "docker_desktop_required": false
+    },
     "windows_wsl2_docker_desktop": {
       "physical_host_os": "windows",
       "controller_boundary": "powershell_to_wsl2",
       "execution_backend": "docker_desktop_linux_engine",
       "task_environment_os": "linux_container",
       "native_windows_harbor": false,
-      "official_swebench_semantics_preserved": true
+      "official_swebench_semantics_preserved": true,
+      "phase2_required": false
     }
   },
   "optional_remote_providers": {
