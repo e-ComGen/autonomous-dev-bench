@@ -12,12 +12,10 @@ outcome is read here. Final task correctness remains solely the official v5 grad
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
 import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from typing import Iterator
@@ -99,6 +97,13 @@ def git(root: Path, *args: str, input_bytes: bytes | None = None, ok=(0,)) -> st
             + completed.stderr.decode("utf-8", "replace")[-3000:]
         )
     return completed.stdout.decode("utf-8", "replace")
+
+
+def require_clean_tracked(root: Path, label: str) -> None:
+    working = git(root, "diff", "--binary", "--no-ext-diff", "--")
+    staged = git(root, "diff", "--cached", "--binary", "--no-ext-diff", "--")
+    if working or staged:
+        raise RuntimeError(f"{label} has tracked source drift")
 
 
 def _safe_component(value: str) -> str:
@@ -295,8 +300,9 @@ def authority_worktree(workspace: Path, root: Path, pair_id: str) -> Iterator[Pa
     try:
         if git(target, "rev-parse", "HEAD").strip() != baseline:
             raise RuntimeError("authority worktree commit differs from Harbor baseline")
-        if git(target, "status", "--porcelain", "--untracked-files=all").strip():
-            raise RuntimeError("authority worktree is not clean")
+        require_clean_tracked(target, "authority worktree")
+        if git(target, "ls-files", "--others", "--exclude-standard").strip():
+            raise RuntimeError("authority worktree unexpectedly contains untracked files")
         yield target
     finally:
         git(workspace, "worktree", "remove", "--force", str(target), ok=(0, 128))
@@ -327,8 +333,9 @@ class RoleSandboxFactory:
                 raise RuntimeError("role sandbox commit differs from issued ActionRequest")
             if git(target, "rev-parse", "HEAD^{tree}").strip() != source_ref.tree.value:
                 raise RuntimeError("role sandbox tree differs from issued ActionRequest")
-            if git(target, "status", "--porcelain", "--untracked-files=all").strip():
-                raise RuntimeError("fresh role sandbox is unexpectedly dirty")
+            require_clean_tracked(target, "role sandbox")
+            if git(target, "ls-files", "--others", "--exclude-standard").strip():
+                raise RuntimeError("fresh role sandbox unexpectedly contains untracked files")
             yield target
         finally:
             git(self.authority, "worktree", "remove", "--force", str(target), ok=(0, 128))
@@ -337,9 +344,7 @@ class RoleSandboxFactory:
 def export_ready_candidate(authority: Path, workspace: Path, baseline_commit: str, candidate_tree: str) -> None:
     if git(workspace, "rev-parse", "HEAD").strip() != baseline_commit:
         raise RuntimeError("Harbor workspace HEAD changed during ADCP execution")
-    if git(workspace, "diff", "--quiet", "--no-ext-diff", "--", ok=(0, 1)).strip():
-        # git diff --quiet emits no stdout; branch retained for defensive clarity.
-        pass
+    require_clean_tracked(workspace, "Harbor workspace before candidate export")
     patch = git(authority, "diff", "--binary", baseline_commit + "..HEAD", "--")
     if not patch.strip():
         raise RuntimeError("CANDIDATE_READY authority worktree has no net source patch")
@@ -354,6 +359,8 @@ def export_ready_candidate(authority: Path, workspace: Path, baseline_commit: st
     # Return Harbor workspace index to its exact baseline while retaining the
     # candidate as ordinary working-tree/untracked changes for independent patch export.
     git(workspace, "reset", "--mixed", "HEAD")
+    if git(workspace, "rev-parse", "HEAD").strip() != baseline_commit:
+        raise RuntimeError("candidate export changed Harbor workspace HEAD")
 
 
 def _event_sequence(events) -> list[str]:
@@ -382,8 +389,7 @@ def main() -> int:
     int(required_env("AUTOBENCH_PHASE3D_REPEAT_INDEX"))
     int(required_env("AUTOBENCH_PHASE3D_SEED"))
 
-    if git(workspace, "diff", "--quiet", "--no-ext-diff", "--", ok=(0, 1)) != "":
-        raise RuntimeError("unexpected tracked diff output")
+    require_clean_tracked(workspace, "Harbor workspace before ADCP scope projection")
     baseline_commit = git(workspace, "rev-parse", "HEAD").strip()
     scope = project_task_scope(
         workspace,
