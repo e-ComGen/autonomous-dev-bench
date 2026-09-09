@@ -29,14 +29,14 @@ jobs:
           python tools/phase3d_prepare_design_decision.py
           PHASE3D_DESIGN_SCENARIOS.json
           PHASE3D_DESIGN_DECISION.json
-          --output-dir .phase3d7-design
+          --output-dir phase3d7-design
       - name: Verify selected design summary
         shell: python
         run: |
           import json
           from pathlib import Path
 
-          root = Path(".phase3d7-design")
+          root = Path("phase3d7-design")
           plan = json.loads((root / "PHASE3D_EXPERIMENT_PLAN.locked.candidate.json").read_text())
           evidence = json.loads((root / "PHASE3D6_DESIGN_DECISION_EVIDENCE.json").read_text())
           schedule = json.loads((root / "PHASE3D_PAIR_SCHEDULE.candidate.json").read_text())
@@ -63,6 +63,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: phase3d7-design-lock-candidate
-          path: .phase3d7-design/
+          path: phase3d7-design/
           if-no-files-found: error
           retention-days: 30
