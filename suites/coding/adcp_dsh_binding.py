@@ -1,27 +1,38 @@
 """Production-side binding from ADCP role calls to the pinned DeepSeek Harness SDK.
 
 The ADCP source remains pinned and model-agnostic. This host adapter owns the
-DeepSeek Harness transport, validates the exact SDK version, isolates each role
-from the candidate workspace, and converts small semantic model responses into
-the existing ADCP v2 role contracts. The deterministic ECACC verifier remains a
-separate local role and is intentionally not delegated to the model.
+DeepSeek Harness transport, validates the exact SDK version, and converts bounded
+semantic model responses into the existing ADCP role contracts.
+
+V2 deliberately gives model-backed ADCP roles the same stock ``sdk`` Harness
+profile/tool substrate while keeping authority separated: tools run only in a
+host-supplied disposable exact-source sandbox. Sandbox mutations are never
+imported into the authoritative candidate; only the validated ADCP ChangeProposal
+can cross that boundary.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 import hashlib
 from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, ContextManager, Mapping
 
 
 DSH_SDK_VERSION = "0.1.2rc1"
-DSH_BINDING_ID = "deepseek-harness-sdk/0.1.2rc1:adcp-role-semantic-v1"
-COMMAND_SCHEMA = "autobench.adcp-dsh-command/1"
-RESULT_SCHEMA = "autobench.adcp-dsh-result/1"
+DSH_BINDING_ID = "deepseek-harness-sdk/0.1.2rc1:adcp-role-semantic-v2"
+COMMAND_SCHEMA = "autobench.adcp-dsh-command/2"
+RESULT_SCHEMA = "autobench.adcp-dsh-result/2"
 MODEL_ROUTE = "deepseek-v4-flash"
 PROVIDER_ROUTE = "deepseek-official"
+STOCK_PARITY_PROFILE = "sdk"
+STOCK_PARITY_ENV = {
+    "DSH_PERMISSION_MODE": "danger-full-access",
+    "DSH_TELEMETRY_DISABLED": "1",
+    "DSH_SESSION_STORE": "jsonl",
+}
 
 
 class DeepSeekBindingError(ValueError):
@@ -56,7 +67,13 @@ class DeepSeekRoleResult:
 
 
 class DeepSeekHarnessProtocol:
-    """Tier-0 protocol port backed by the real DeepSeek Harness Python SDK."""
+    """Tier-0 protocol port backed by the real DeepSeek Harness Python SDK.
+
+    ``role_workspace`` is a host-owned isolation callback. In paid execution it
+    must yield a disposable worktree whose HEAD/tree matches the command's exact
+    ADCP source binding. This adapter intentionally has no way to locate or mutate
+    the authoritative candidate workspace itself.
+    """
 
     def __init__(
         self,
@@ -66,15 +83,22 @@ class DeepSeekHarnessProtocol:
         api_key: str,
         model: str = MODEL_ROUTE,
         provider: str = PROVIDER_ROUTE,
-        profile: str = "sdk-minimal",
+        profile: str = STOCK_PARITY_PROFILE,
         request_timeout_seconds: float = 120.0,
         harness_factory: Callable[..., object] | None = None,
+        role_workspace: Callable[[DeepSeekRoleCommand], ContextManager[Path]] | None = None,
         require_installed_sdk: bool = True,
     ) -> None:
         if not base_url.strip() or not api_key.strip():
             raise DeepSeekBindingError("DeepSeek Harness protocol requires an explicit proxy route and credential")
         if model != MODEL_ROUTE or provider != PROVIDER_ROUTE:
             raise DeepSeekBindingError("binding changed the preregistered model/provider identity")
+        if profile != STOCK_PARITY_PROFILE:
+            raise DeepSeekBindingError(
+                f"ADCP worker profile must match stock Harness profile {STOCK_PARITY_PROFILE!r}"
+            )
+        if role_workspace is not None and not callable(role_workspace):
+            raise TypeError("role_workspace must be a callable context-manager factory")
         self.state_root = Path(state_root).resolve()
         self.state_root.mkdir(parents=True, exist_ok=True)
         self.base_url = base_url
@@ -84,6 +108,7 @@ class DeepSeekHarnessProtocol:
         self.profile = profile
         self.request_timeout_seconds = request_timeout_seconds
         self._harness_factory = harness_factory
+        self._role_workspace = role_workspace
         self.model_calls = 0
         if require_installed_sdk:
             try:
@@ -97,15 +122,24 @@ class DeepSeekHarnessProtocol:
 
     def describe_capabilities(self) -> dict[str, object]:
         return {
-            "schema": "autobench.deepseek-harness-capabilities/1",
+            "schema": "autobench.deepseek-harness-capabilities/2",
             "binding_id": DSH_BINDING_ID,
             "sdk_version": DSH_SDK_VERSION,
             "provider": self.provider,
             "model": self.model,
+            "profile": self.profile,
+            "tool_substrate": "stock-sdk-disposable-sandbox",
             "roles": ("LOCAL_ARCHITECT", "CODER", "REVIEWER"),
             "context_modes": ("FRESH",),
             "capabilities": ("source.read", "evidence.read", "patch.propose"),
         }
+
+    def _fallback_role_workspace(self, command: DeepSeekRoleCommand) -> ContextManager[Path]:
+        """Qualification-only empty sandbox; paid runner must supply exact-source workspaces."""
+        actor_key = hashlib.sha256(command.actor_id.encode("utf-8")).hexdigest()[:16]
+        cwd = self.state_root / "isolated-role-workspaces" / actor_key
+        cwd.mkdir(parents=True, exist_ok=True)
+        return nullcontext(cwd)
 
     def run_agent(self, command: object) -> DeepSeekRoleResult:
         if type(command) is not DeepSeekRoleCommand:
@@ -125,36 +159,44 @@ class DeepSeekHarnessProtocol:
 
         actor_key = hashlib.sha256(command.actor_id.encode("utf-8")).hexdigest()[:16]
         dsh_home = self.state_root / "homes" / actor_key
-        cwd = self.state_root / "isolated-role-workspaces" / actor_key
         dsh_home.mkdir(parents=True, exist_ok=True)
-        cwd.mkdir(parents=True, exist_ok=True)
         session_id = "adcp-" + hashlib.sha256(command.call_id.encode("utf-8")).hexdigest()[:24]
         prompt = _role_prompt(command)
         max_tokens = max(256, min(16384, command.max_output_bytes // 4))
-
-        harness = factory(
-            dsh_home=str(dsh_home),
-            cwd=str(cwd),
-            profile=self.profile,
-            provider=self.provider,
-            model=self.model,
-            base_url=self.base_url,
-            api_key=self.api_key,
-            max_tokens=max_tokens,
-            request_timeout_seconds=self.request_timeout_seconds,
+        workspace_cm = (
+            self._role_workspace(command)
+            if self._role_workspace is not None
+            else self._fallback_role_workspace(command)
         )
-        self.model_calls += 1
-        try:
-            if hasattr(harness, "__enter__"):
-                with harness as active:
-                    result = active.run(prompt, session_id=session_id)
-            else:
-                result = harness.run(prompt, session_id=session_id)
-                close = getattr(harness, "close", None)
-                if callable(close):
-                    close()
-        except BaseException:
-            raise
+
+        with workspace_cm as workspace_value:
+            cwd = Path(workspace_value).resolve(strict=True)
+            if not cwd.is_dir():
+                raise DeepSeekBindingError("role workspace callback did not yield a directory")
+            harness = factory(
+                dsh_home=str(dsh_home),
+                cwd=str(cwd),
+                profile=self.profile,
+                provider=self.provider,
+                model=self.model,
+                base_url=self.base_url,
+                api_key=self.api_key,
+                env=dict(STOCK_PARITY_ENV),
+                max_tokens=max_tokens,
+                request_timeout_seconds=self.request_timeout_seconds,
+            )
+            self.model_calls += 1
+            try:
+                if hasattr(harness, "__enter__"):
+                    with harness as active:
+                        result = active.run(prompt, session_id=session_id)
+                else:
+                    result = harness.run(prompt, session_id=session_id)
+                    close = getattr(harness, "close", None)
+                    if callable(close):
+                        close()
+            except BaseException:
+                raise
 
         final_response = getattr(result, "final_response", None)
         finish_reason = getattr(result, "finish_reason", None)
@@ -201,6 +243,8 @@ class DeepSeekHarnessBinding:
             "sdk_version": DSH_SDK_VERSION,
             "provider": PROVIDER_ROUTE,
             "model": MODEL_ROUTE,
+            "profile": STOCK_PARITY_PROFILE,
+            "tool_substrate": "stock-sdk-disposable-sandbox",
         }
         for name, value in expected.items():
             if manifest.get(name) != value:
@@ -405,16 +449,20 @@ def _role_prompt(command: DeepSeekRoleCommand) -> str:
         ),
     }[command.role]
     return (
-        "You are one isolated ADCP development role. Do not call tools and do not mutate files. "
-        "Use only the immutable input below. Return exactly one JSON object, with no Markdown, "
-        "prose, comments, or code fences.\n\n"
+        "You are one isolated ADCP development role. You may use the normal DeepSeek Harness tools "
+        "to inspect the disposable repository sandbox and run relevant commands/tests. The sandbox is "
+        "an exact source snapshot for this role but is NOT the authoritative candidate workspace. "
+        "Any file mutations performed through tools are disposable and are never imported directly. "
+        "Your only authoritative output is the exact JSON object requested below. Return exactly one "
+        "JSON object, with no Markdown, prose, comments, or code fences.\n\n"
         f"ROLE: {command.role}\n"
         f"ROLE INSTRUCTION:\n{command.instruction}\n\n"
         f"IMMUTABLE ROLE INPUT:\n{command.input_json}\n\n"
         f"REQUIRED SEMANTIC RESPONSE SHAPE:\n{schema}\n"
-        "All paths must stay inside the declared write scope. A Coder edit content value is the "
-        "complete replacement file content. If the task cannot be completed safely, return an empty "
-        "edit/plan/finding set and one blocker instead of inventing authority."
+        "All proposed paths must stay inside the declared write scope. A Coder edit content value is "
+        "the complete replacement file content. Do not rely on disposable sandbox mutations as the "
+        "proposal: explicitly return every intended authoritative edit in JSON. If the task cannot be "
+        "completed safely, return an empty edit/plan/finding set and one blocker instead of inventing authority."
     )
 
 
