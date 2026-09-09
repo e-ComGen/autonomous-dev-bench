@@ -158,6 +158,15 @@ def _git_head(root: Path) -> str:
     return completed.stdout.strip()
 
 
+def _configure_adcp_import_paths(adcp_root: Path) -> None:
+    shared_contracts_src = adcp_root / "packages" / "shared_contracts" / "src"
+    shared_contracts_init = shared_contracts_src / "shared_contracts" / "__init__.py"
+    if not shared_contracts_init.is_file():
+        raise SystemExit(f"ADCP shared_contracts source is missing: {shared_contracts_init}")
+    sys.path.insert(0, str(adcp_root))
+    sys.path.insert(0, str(shared_contracts_src))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--adcp-root", type=Path, required=True)
@@ -168,7 +177,7 @@ def main() -> int:
     head = _git_head(adcp_root)
     if head != ADCP_COMMIT:
         raise SystemExit(f"ADCP commit mismatch: expected {ADCP_COMMIT}, got {head}")
-    sys.path.insert(0, str(adcp_root))
+    _configure_adcp_import_paths(adcp_root)
 
     import shared_contracts as sc
     from examples.zone_development.fixture import BASE, GOOD, NEIGHBOR, ExternalZone
