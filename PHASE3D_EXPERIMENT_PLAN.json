@@ -82,11 +82,17 @@
       "patch_bytes",
       "repair_count"
     ],
-    "winner_rule": "No winner is declared from infrastructure qualification. Paid paired outcomes must be reported task-by-task and in aggregate after the precommitted run completes."
+    "winner_rule": "ADCP only when the complete preregistered schedule has positive ADCP-minus-Stock paired effect and two-sided exact McNemar p < alpha; Stock symmetrically for a negative effect; otherwise INCONCLUSIVE."
   },
   "analysis": {
     "unit": "task_repeat_pair",
     "paired": true,
+    "effect_direction": "adcp_minus_stock",
+    "inferential_test": "exact_mcnemar_two_sided",
+    "null_discordant_win_probability": 0.5,
+    "alpha": 0.05,
+    "final_analysis_requires_complete_schedule": true,
+    "excluded_attempts_never_count_as_completed_pairs": true,
     "report_discordant_pairs": true,
     "report_per_task_results": true,
     "report_aggregate_resolution_rate": true,

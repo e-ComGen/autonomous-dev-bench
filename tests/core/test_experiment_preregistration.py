@@ -10,6 +10,7 @@ from benchmark_core.experiment_preregistration import (
     ExperimentDesignSnapshot,
     ExperimentPlanInvalid,
 )
+from benchmark_core.paired_analysis import PairedExperimentSchedule
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,7 +98,37 @@ def test_treatment_commit_drift_is_invalid(tmp_path: Path) -> None:
         ExperimentDesignSnapshot.from_repository(tmp_path)
 
 
-def test_fully_precommitted_design_can_become_design_ready(tmp_path: Path) -> None:
+def test_analysis_alpha_drift_is_hard_invalid(tmp_path: Path) -> None:
+    _copy_design_sources(tmp_path)
+    plan = _plan(tmp_path)
+    plan["analysis"]["alpha"] = 0.10
+    _write_plan(tmp_path, plan)
+
+    with pytest.raises(ExperimentPlanInvalid, match="analysis.alpha"):
+        ExperimentDesignSnapshot.from_repository(tmp_path)
+
+
+def test_analysis_test_drift_is_hard_invalid(tmp_path: Path) -> None:
+    _copy_design_sources(tmp_path)
+    plan = _plan(tmp_path)
+    plan["analysis"]["inferential_test"] = "posthoc_test"
+    _write_plan(tmp_path, plan)
+
+    with pytest.raises(ExperimentPlanInvalid, match="analysis.inferential_test"):
+        ExperimentDesignSnapshot.from_repository(tmp_path)
+
+
+def test_incomplete_schedule_requirement_cannot_be_disabled(tmp_path: Path) -> None:
+    _copy_design_sources(tmp_path)
+    plan = _plan(tmp_path)
+    plan["analysis"]["final_analysis_requires_complete_schedule"] = False
+    _write_plan(tmp_path, plan)
+
+    with pytest.raises(ExperimentPlanInvalid, match="final_analysis_requires_complete_schedule"):
+        ExperimentDesignSnapshot.from_repository(tmp_path)
+
+
+def test_fully_precommitted_design_can_become_design_ready_and_compile_exact_schedule(tmp_path: Path) -> None:
     _copy_design_sources(tmp_path)
     plan = _plan(tmp_path)
     _make_ready(plan)
@@ -115,6 +146,14 @@ def test_fully_precommitted_design_can_become_design_ready(tmp_path: Path) -> No
     assert snapshot.wall_time_seconds_per_arm == 3600
     assert snapshot.patch_byte_cap_per_arm == 1000000
     assert 0 <= snapshot.expected_seed("psf__requests-1142", 1) < 2**64
+
+    schedule = PairedExperimentSchedule.from_design(snapshot)
+    assert len(schedule.entries) == 20
+    assert schedule.design_identity == snapshot.plan_digest
+    assert schedule.entries[0].pair_id == "phase3d-astropy__astropy-12907-r0"
+    assert schedule.entries[1].pair_id == "phase3d-astropy__astropy-12907-r1"
+    assert schedule.entries[-1].pair_id == "phase3d-sympy__sympy-20590-r1"
+    assert schedule.entries[0].seed == snapshot.expected_seed("astropy__astropy-12907", 0)
 
 
 def test_stopping_count_must_equal_task_count_times_repeats(tmp_path: Path) -> None:

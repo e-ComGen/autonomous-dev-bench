@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Mapping
 
 from .identity import CanonicalModel, Sha256Digest
+from .paired_analysis_contract import (
+    PairedAnalysisContractError,
+    validate_paired_analysis_preregistration,
+)
 
 
 PAIR_SEED_ALGORITHM = "sha256-master-task-repeat-v1"
@@ -260,16 +264,10 @@ def _validate_fixed_identity(plan: Mapping[str, object], cohort: Mapping[str, ob
     if not isinstance(secondary, list) or set(secondary) != required_secondary:
         raise ExperimentPlanInvalid("secondary accounting fields changed")
 
-    outcomes = _mapping(plan, "outcomes")
-    if outcomes.get("primary_endpoint") != "official_swebench_v5_resolved":
-        raise ExperimentPlanInvalid("primary endpoint changed")
-    if outcomes.get("primary_estimand") != "paired_difference_in_resolution_rate_adcp_minus_stock":
-        raise ExperimentPlanInvalid("primary estimand changed")
-
-    analysis = _mapping(plan, "analysis")
-    required_true = ("paired", "report_discordant_pairs", "report_per_task_results", "report_aggregate_resolution_rate", "report_primary_paired_effect", "no_universal_weighted_score", "outcome_blind_plan_changes_required")
-    if analysis.get("unit") != "task_repeat_pair" or any(analysis.get(name) is not True for name in required_true):
-        raise ExperimentPlanInvalid("paired analysis invariants changed")
+    try:
+        validate_paired_analysis_preregistration(plan)
+    except PairedAnalysisContractError as error:
+        raise ExperimentPlanInvalid(str(error)) from error
 
     exclusions = _mapping(plan, "exclusions")
     forbidden = exclusions.get("forbidden")
