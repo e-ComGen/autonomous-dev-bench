@@ -110,13 +110,16 @@
     "interim_outcome_based_stopping": false,
     "required_completed_pairs": null
   },
-  "paid_ready": false,
-  "blockers": [
+  "design_paid_ready": false,
+  "design_blockers": [
     "REPEAT_COUNT_NOT_PRECOMMITTED",
     "PRIMARY_TOKEN_BUDGET_NOT_PRECOMMITTED",
-    "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED",
-    "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS",
-    "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS"
+    "SECONDARY_RESOURCE_LIMITS_NOT_PRECOMMITTED"
+  ],
+  "external_admission_gates": [
+    "DEEPSEEK_V4_ESTIMATOR.lock.json",
+    "ADCP.lock.json",
+    "DEEPSEEK_HARNESS.lock.json"
   ],
   "paid_paired_ab": "NOT_RUN",
   "winner": "UNKNOWN"
