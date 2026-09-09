@@ -22,6 +22,16 @@ def payload(**overrides):
         "role_calls": 7,
         "roles_seen": ["architect", "coder", "reviewer", "verifier"],
         "evidence": ["cas:sha256:" + "a" * 64],
+        "model_accounting": {
+            "requests": 7,
+            "input_tokens": 100,
+            "output_tokens": 40,
+            "reasoning_tokens": 5,
+            "cache_tokens": 20,
+            "cost_usd_micros": 300,
+            "accounting_valid": True,
+            "violations": [],
+        },
         "metadata": {"repairs": 1},
     }
     value.update(overrides)
@@ -36,6 +46,8 @@ def test_accepts_exact_pinned_runtime_and_shared_gateway_route():
     assert result.direct_model_api_used is False
     assert result.outcome == "CANDIDATE_READY"
     assert result.role_calls == 7
+    assert result.model_accounting.total_model_tokens == 140
+    assert result.model_accounting.requests == 7
 
 
 @pytest.mark.parametrize(
@@ -63,9 +75,30 @@ def test_candidate_ready_requires_all_four_distinct_role_classes():
         ADCPRuntimeResult.from_mapping(payload(roles_seen=["architect", "coder", "reviewer"]))
 
 
-def test_non_terminal_outcome_can_report_partial_role_execution():
+def test_candidate_ready_requires_valid_nonviolating_accounting():
+    bad = dict(payload()["model_accounting"])
+    bad["accounting_valid"] = False
+    with pytest.raises(ValueError, match="valid, non-violating"):
+        ADCPRuntimeResult.from_mapping(payload(model_accounting=bad))
+
+    bad = dict(payload()["model_accounting"])
+    bad["violations"] = ["total_model_token_cap"]
+    with pytest.raises(ValueError, match="valid, non-violating"):
+        ADCPRuntimeResult.from_mapping(payload(model_accounting=bad))
+
+
+def test_non_terminal_outcome_can_report_partial_role_execution_and_budget_stop():
+    accounting = dict(payload()["model_accounting"])
+    accounting["violations"] = ["total_model_token_cap"]
     result = ADCPRuntimeResult.from_mapping(
-        payload(outcome="BLOCKED", roles_seen=["architect"], role_calls=1, evidence=[])
+        payload(
+            outcome="BLOCKED",
+            roles_seen=["architect"],
+            role_calls=1,
+            evidence=[],
+            model_accounting=accounting,
+        )
     )
     assert result.outcome == "BLOCKED"
     assert result.roles_seen == ("architect",)
+    assert result.model_accounting.violations == ("total_model_token_cap",)
