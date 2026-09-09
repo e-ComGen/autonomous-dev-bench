@@ -21,6 +21,8 @@ class StockDeepSeekAgent(BaseAgent):
     PROMPT_PATH = "/tmp/autobench-stock-instruction.md"
     RESULT_PATH = "/tmp/autobench-stock-result.json"
     EXPECTED_VERSION = "0.1.2rc1"
+    PAID_MAX_TOKENS_PER_REQUEST = 16384
+    PAID_WALL_SECONDS = 600
 
     @staticmethod
     def name() -> str:
@@ -31,7 +33,7 @@ class StockDeepSeekAgent(BaseAgent):
         self.model_name = model_name or "deepseek-v4-flash"
 
     def version(self) -> str:
-        return "1.0.0"
+        return "1.2.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,7 @@ class StockDeepSeekAgent(BaseAgent):
         api_key = os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY")
         if not base_url or not api_key:
             raise ValueError("StockDeepSeekAgent requires controller-side DeepSeek route credentials")
+        phase3d_paid = os.environ.get("AUTOBENCH_PHASE3D_PAID_EXPERIMENT") == "1"
 
         prompt_file = self.logs_dir / "INSTRUCTION.md"
         prompt_file.write_text(instruction, encoding="utf-8")
@@ -66,6 +69,8 @@ class StockDeepSeekAgent(BaseAgent):
             "AUTOBENCH_DSH_MODEL": self.model_name,
             "AUTOBENCH_DSH_SESSION_ID": f"harbor-{self.logs_dir.parent.name}",
         }
+        if phase3d_paid:
+            runner_env["AUTOBENCH_DSH_MAX_TOKENS"] = str(self.PAID_MAX_TOKENS_PER_REQUEST)
         usage_url = os.environ.get("AUTOBENCH_DEEPSEEK_USAGE_URL")
         if usage_url:
             runner_env["AUTOBENCH_DEEPSEEK_USAGE_URL"] = usage_url
@@ -76,7 +81,7 @@ class StockDeepSeekAgent(BaseAgent):
             f"python {self.RUNNER_PATH}",
             cwd=workspace.repository_root,
             env=runner_env,
-            timeout_sec=120,
+            timeout_sec=self.PAID_WALL_SECONDS if phase3d_paid else 120,
         )
         if execution.return_code != 0:
             stderr = (execution.stderr or execution.stdout or "")[-4000:]
@@ -93,7 +98,7 @@ class StockDeepSeekAgent(BaseAgent):
             raise ValueError("stock DeepSeek model identity changed")
 
         patch = await workspace.git_diff()
-        if not patch.strip():
+        if not patch.strip() and not phase3d_paid:
             raise ValueError("stock DeepSeek Harness produced no repository patch")
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
@@ -109,6 +114,7 @@ class StockDeepSeekAgent(BaseAgent):
         context.metadata = {
             "autonomous_dev_bench": {
                 "agent": "stock_deepseek_harness",
+                "phase3d_paid": phase3d_paid,
                 "baseline_commit": baseline_commit,
                 "environment_id": getattr(environment, "environment_id", None),
                 "profile": result["profile"],
@@ -121,7 +127,10 @@ class StockDeepSeekAgent(BaseAgent):
                 "final_response": result.get("final_response"),
                 "event_count": result.get("event_count"),
                 "fake_model": result.get("fake_model") is True,
+                "max_tokens_per_request": self.PAID_MAX_TOKENS_PER_REQUEST if phase3d_paid else None,
+                "wall_time_cap_seconds": self.PAID_WALL_SECONDS if phase3d_paid else 120,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
+                "empty_patch": not bool(patch.strip()),
             }
         }

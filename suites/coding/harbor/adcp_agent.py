@@ -26,6 +26,7 @@ from suites.coding.adcp_contract import (
     ADCP_RUNTIME,
     parse_adcp_runner_receipt,
 )
+from suites.coding.phase3d_adcp_contract import parse_phase3d_adcp_runner_receipt
 from .workspace import HarborWorkspaceFacade
 
 
@@ -45,7 +46,7 @@ class ADCPHarborAgent(BaseAgent):
         self.model_name = model_name or ADCP_MODEL_ROUTE
 
     def version(self) -> str:
-        return "1.0.0"
+        return "1.1.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -63,6 +64,9 @@ class ADCPHarborAgent(BaseAgent):
         proxy_base_url = self._required_env("AUTOBENCH_MODEL_PROXY_BASE_URL")
         proxy_token = self._required_env("AUTOBENCH_MODEL_PROXY_TOKEN")
         fake_runtime = os.environ.get("AUTOBENCH_ADCP_FAKE_RUNTIME") == "1"
+        phase3d_paid = os.environ.get("AUTOBENCH_PHASE3D_PAID_EXPERIMENT") == "1"
+        if fake_runtime and phase3d_paid:
+            raise ValueError("Phase 3D paid execution forbids the fake ADCP runtime")
 
         instruction_file = self.logs_dir / "INSTRUCTION.md"
         instruction_file.write_text(instruction, encoding="utf-8")
@@ -101,9 +105,21 @@ class ADCPHarborAgent(BaseAgent):
         }
         if fake_runtime:
             runner_env["AUTOBENCH_ADCP_FAKE_RUNTIME"] = "1"
+        if phase3d_paid:
+            runner_env["AUTOBENCH_PHASE3D_PAID_EXPERIMENT"] = "1"
+            for name in (
+                "AUTOBENCH_PHASE3D_PAIR_ID",
+                "AUTOBENCH_PHASE3D_TASK_ID",
+                "AUTOBENCH_PHASE3D_REPEAT_INDEX",
+                "AUTOBENCH_PHASE3D_SEED",
+            ):
+                runner_env[name] = self._required_env(name)
 
+        runner_command = os.environ.get(
+            "AUTOBENCH_ADCP_RUNNER_COMMAND", f"python3 {self.RUNNER_PATH}"
+        )
         execution = await environment.exec(
-            f"python3 {self.RUNNER_PATH}",
+            runner_command,
             cwd=workspace.repository_root,
             env=runner_env,
             timeout_sec=180,
@@ -119,14 +135,23 @@ class ADCPHarborAgent(BaseAgent):
         raw = json.loads(local_result.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("external ADCP runner returned a non-object receipt")
-        receipt = parse_adcp_runner_receipt(
-            raw,
-            allow_fake_runtime=fake_runtime,
-            require_repair_cycle=fake_runtime,
-        )
+        if phase3d_paid:
+            receipt = parse_phase3d_adcp_runner_receipt(raw)
+        else:
+            receipt = parse_adcp_runner_receipt(
+                raw,
+                allow_fake_runtime=fake_runtime,
+                require_repair_cycle=fake_runtime,
+            )
 
         patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
-        if not patch.strip():
+        if phase3d_paid:
+            exports_candidate = bool(getattr(receipt, "exports_candidate", False))
+            if exports_candidate and not patch.strip():
+                raise ValueError("CANDIDATE_READY paid ADCP run exported no observable workspace patch")
+            if not exports_candidate and patch.strip():
+                raise ValueError("non-ready paid ADCP outcome leaked an unapproved candidate into the benchmark workspace")
+        elif not patch.strip():
             raise ValueError("ADCP runner reached CANDIDATE_READY without an observable workspace patch")
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
@@ -139,6 +164,7 @@ class ADCPHarborAgent(BaseAgent):
         context.metadata = {
             "autonomous_dev_bench": {
                 "agent": "adcp",
+                "phase3d_paid": phase3d_paid,
                 "baseline_commit": baseline_commit,
                 "environment_id": getattr(environment, "environment_id", None),
                 "target_runtime": {
@@ -148,17 +174,19 @@ class ADCPHarborAgent(BaseAgent):
                     "integration": receipt.target_runtime.integration,
                 },
                 "runtime_loaded": receipt.runtime_loaded,
-                "fake_runtime": receipt.fake_runtime,
+                "fake_runtime": bool(getattr(receipt, "fake_runtime", False)),
                 "role_ids": dict(receipt.role_ids),
                 "role_call_counts": dict(receipt.role_call_counts),
                 "event_sequence": list(receipt.event_sequence),
                 "outcome_status": receipt.outcome_status,
+                "reason_code": getattr(receipt, "reason_code", None),
                 "candidate_ready": receipt.candidate_ready,
                 "task_completed": receipt.task_completed,
                 "repair_count": receipt.repair_count,
                 "session_id": receipt.session_id,
                 "request_id": receipt.request_id,
                 "candidate_snapshot_id": receipt.candidate_snapshot_id,
+                "scope_projection_id": getattr(receipt, "scope_projection_id", None),
                 "model": receipt.model_route,
                 "provider": receipt.provider_route,
                 "model_called": receipt.model_called,

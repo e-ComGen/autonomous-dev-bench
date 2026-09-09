@@ -13,9 +13,9 @@ from typing import Mapping, Sequence
 
 
 ADCP_REPOSITORY = "e-ComGen/autonomous-dev-control-plane"
-ADCP_COMMIT = "285702063815280398b95ba8696566259c8b5b34"
+ADCP_COMMIT = "f74c48887f83b0d7a27f54f1046f12217750ee87"
 ADCP_RUNTIME = "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime"
-ADCP_INTEGRATION = "existing-v2-runtime-role-ports"
+ADCP_INTEGRATION = "existing-v2-runtime-role-ports+repository-snapshot-v2"
 ADCP_RECEIPT_SCHEMA = "autobench.adcp-harbor-result/1"
 ADCP_MODEL_ROUTE = "deepseek-v4-flash"
 ADCP_PROVIDER_ROUTE = "deepseek-official"

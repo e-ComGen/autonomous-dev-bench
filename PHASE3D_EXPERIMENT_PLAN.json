@@ -12,9 +12,15 @@
     "arm_b": {
       "name": "adcp",
       "implementation": "adcp_zone_development",
-      "commit": "285702063815280398b95ba8696566259c8b5b34",
+      "commit": "f74c48887f83b0d7a27f54f1046f12217750ee87",
       "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
-      "integration": "existing-v2-runtime-role-ports"
+      "integration": "existing-v2-runtime-role-ports+repository-snapshot-v2",
+      "deepseek_role_binding": "deepseek-harness-sdk/0.1.2rc1:adcp-role-semantic-v2",
+      "worker_profile": "sdk",
+      "worker_workspace": "disposable_exact_source_git_worktree",
+      "authoritative_candidate_workspace_exposed_to_model": false,
+      "scope_policy": "phase3d-public-lexical-scope-v1",
+      "hidden_swebench_oracle_access": false
     },
     "model": "deepseek-v4-flash",
     "provider": "deepseek-official",
@@ -161,6 +167,14 @@
       "task_count": 10,
       "total_pair_count": 370
     },
+    "outcome_data_used": false,
+    "paid_model_called": false
+  },
+  "outcome_blind_amendment": {
+    "reason": "Real-repository compatibility and atomic-worker capability parity had to be fixed before the first paid pair. The cohort, sample size, endpoint, estimand, alpha, stopping rule, model/provider, budget and pair schedule remain unchanged.",
+    "previous_adcp_commit": "285702063815280398b95ba8696566259c8b5b34",
+    "new_adcp_commit": "f74c48887f83b0d7a27f54f1046f12217750ee87",
+    "paid_pairs_completed_before_amendment": 0,
     "outcome_data_used": false,
     "paid_model_called": false
   }

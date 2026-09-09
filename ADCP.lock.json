@@ -1,13 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "role": "orchestrated_arm_private_runtime_identity",
   "repository": "e-ComGen/autonomous-dev-control-plane",
-  "commit": "285702063815280398b95ba8696566259c8b5b34",
+  "commit": "f74c48887f83b0d7a27f54f1046f12217750ee87",
   "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
-  "integration": "existing-v2-runtime-role-ports",
+  "integration": "existing-v2-runtime-role-ports+repository-snapshot-v2",
   "model_route": "deepseek-v4-flash",
   "provider_route": "deepseek-official",
   "public_process_receipt_schema": "autobench.adcp-harbor-result/1",
+  "paid_process_receipt_schema": "autobench.phase3d-adcp-harbor-result/1",
+  "deepseek_role_binding": "deepseek-harness-sdk/0.1.2rc1:adcp-role-semantic-v2",
   "required_role_separation": [
     "architect",
     "coder",
@@ -19,24 +21,37 @@
     "publication_owned_by_adcp": false,
     "integration_owned_by_adcp": false,
     "model_calls_via_shared_budget_proxy": true,
-    "upstream_provider_credential_visible_to_arm": false
+    "upstream_provider_credential_visible_to_arm": false,
+    "model_role_workspace_is_authoritative_candidate": false,
+    "model_role_worker_profile_matches_stock": true,
+    "hidden_swebench_oracle_visible_to_adcp": false,
+    "nonready_terminal_outcome_is_infrastructure_failure": false
   },
-  "fake_process_boundary_status": "PASS",
-  "fake_process_boundary": {
+  "real_repository_substrate": {
+    "status": "NOT_RUN",
+    "source_snapshot": "complete-git-tree+bounded-text-projection-v2",
+    "read_scope": "content-addressed-static-preload-independent-of-write-authority",
+    "write_scope": "outcome-blind-public-problem-plus-baseline-projection",
+    "role_sandbox": "disposable-exact-source-git-worktree",
+    "candidate_export": "candidate-ready-only-with-exact-tree-check",
+    "qualification_requires_all_10_frozen_tasks": true,
+    "paid_model_called": false
+  },
+  "fake_process_boundary_status": "NOT_RUN",
+  "fake_process_boundary": null,
+  "superseded_fake_process_boundary": {
+    "reason": "runtime and harness binding identity changed before any paid pair",
+    "old_adcp_commit": "285702063815280398b95ba8696566259c8b5b34",
+    "old_integration": "existing-v2-runtime-role-ports",
     "workflow_run_id": 34348981516,
     "head_sha": "42951bbd434b87422863d0e8f48812fd041e7aec",
     "artifact_id": 10102908543,
     "artifact_digest": "sha256:cc05aaf81875995cefd6624787252697997fdb981c5df46bc73505b2815d48c5",
     "harbor_version": "0.22.0",
     "harbor_commit": "d4509bbd3804f4b408527f476d764dacd988791d",
-    "patch_sha256": "6f66e6683575a4504f25c0a3c8b4356d62eb167d807648cb0a7370f5e5a5c622",
-    "patch_bytes": 162,
-    "repair_count": 1,
-    "paid_model_called": false,
-    "private_runtime_loaded": false,
-    "production_ready": false
+    "paid_model_called": false
   },
   "private_pinned_runtime_qualification_status": "NOT_RUN",
-  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED",
+  "production_blocker": "NEW_ADCP_REAL_REPOSITORY_SUBSTRATE_NOT_QUALIFIED",
   "paid_ready": false
 }
