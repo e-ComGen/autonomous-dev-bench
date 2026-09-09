@@ -14,12 +14,7 @@ from typing import Iterable, Mapping
 
 from .experiment_preregistration import ExperimentDesignSnapshot
 from .identity import CanonicalModel, Sha256Digest, require_identifier
-from .paired_analysis_contract import (
-    ANALYSIS_ALPHA,
-    ANALYSIS_EFFECT_DIRECTION,
-    ANALYSIS_NULL_DISCORDANT_WIN_PROBABILITY,
-    ANALYSIS_TEST,
-)
+from .paired_analysis_contract import ANALYSIS_ALPHA
 
 
 class PairedAnalysisError(ValueError):
@@ -129,6 +124,12 @@ class PairOutcomeAttempt(CanonicalModel):
             value = getattr(self, name)
             if not isinstance(value, Sha256Digest):
                 object.__setattr__(self, name, Sha256Digest(str(value)))
+        if self.stock_manifest_identity == self.adcp_manifest_identity:
+            raise ValueError("paired attempt requires distinct Stock and ADCP manifest identities")
+        for name in ("stock_resolved", "adcp_resolved"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, bool):
+                raise ValueError(f"{name} must be boolean or null")
         for name in ("stock_grader_evidence", "adcp_grader_evidence", "exclusion_evidence"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, Sha256Digest):
@@ -144,6 +145,8 @@ class PairOutcomeAttempt(CanonicalModel):
             if self.exclusion_evidence is not None:
                 raise ValueError("included pair attempt cannot carry exclusion evidence")
         else:
+            if self.stock_resolved is not None or self.adcp_resolved is not None:
+                raise ValueError("excluded pair attempt cannot carry terminal arm outcomes")
             if self.exclusion_evidence is None:
                 raise ValueError("excluded pair attempt requires exclusion evidence")
 
@@ -355,6 +358,15 @@ def _validate_and_group(
         observed_indices = tuple(item.attempt_index for item in ordered)
         if observed_indices != expected_indices:
             raise PairedAnalysisError(f"pair {pair_id} attempt indices must be contiguous from zero")
+        expected_manifest_identities = (
+            ordered[0].stock_manifest_identity,
+            ordered[0].adcp_manifest_identity,
+        )
+        if any(
+            (item.stock_manifest_identity, item.adcp_manifest_identity) != expected_manifest_identities
+            for item in ordered[1:]
+        ):
+            raise PairedAnalysisError(f"pair {pair_id} changes arm manifest identities across attempts")
         included_positions = [index for index, item in enumerate(ordered) if item.included]
         if included_positions and included_positions[-1] != len(ordered) - 1:
             raise PairedAnalysisError(f"pair {pair_id} has attempts after an included terminal outcome")

@@ -170,6 +170,16 @@ def test_all_ties_have_zero_effect_and_exact_p_one() -> None:
     assert report.winner is ExperimentWinner.INCONCLUSIVE
 
 
+def test_exact_mcnemar_small_n_and_balanced_edge_cases() -> None:
+    assert exact_mcnemar_two_sided(stock_only=0, adcp_only=0) == 1.0
+    assert exact_mcnemar_two_sided(stock_only=0, adcp_only=1) == 1.0
+    assert exact_mcnemar_two_sided(stock_only=1, adcp_only=0) == 1.0
+    assert exact_mcnemar_two_sided(stock_only=0, adcp_only=2) == pytest.approx(0.5)
+    assert exact_mcnemar_two_sided(stock_only=1, adcp_only=1) == 1.0
+    assert exact_mcnemar_two_sided(stock_only=1, adcp_only=2) == 1.0
+    assert exact_mcnemar_two_sided(stock_only=2, adcp_only=2) == 1.0
+
+
 def test_exact_mcnemar_rejects_negative_counts_and_is_symmetric() -> None:
     assert exact_mcnemar_two_sided(stock_only=2, adcp_only=5) == exact_mcnemar_two_sided(stock_only=5, adcp_only=2)
     with pytest.raises(ValueError, match="stock_only"):
@@ -182,6 +192,33 @@ def test_pair_outcome_identity_must_match_schedule() -> None:
 
     with pytest.raises(PairedAnalysisError, match="identity differs from schedule"):
         audit_paired_ledger(schedule, (replace(attempt, seed=attempt.seed + 1),))
+
+
+def test_foreign_pair_task_and_repeat_identities_are_rejected() -> None:
+    schedule = _schedule(1)
+    attempt = _included(schedule.entries[0], stock=False, adcp=False)
+
+    with pytest.raises(PairedAnalysisError, match="outside schedule"):
+        audit_paired_ledger(schedule, (replace(attempt, pair_id="phase3d-foreign-r0"),))
+    with pytest.raises(PairedAnalysisError, match="identity differs from schedule"):
+        audit_paired_ledger(schedule, (replace(attempt, task_id="foreign-task"),))
+    with pytest.raises(PairedAnalysisError, match="identity differs from schedule"):
+        audit_paired_ledger(schedule, (replace(attempt, repeat_index=1),))
+
+
+def test_schedule_duplicate_pair_and_task_repeat_identities_are_rejected() -> None:
+    entry = _schedule(1).entries[0]
+
+    with pytest.raises(ValueError, match="duplicate pair_id"):
+        PairedExperimentSchedule(
+            design_identity=DIGEST_A,
+            entries=(entry, replace(entry, task_id="other-task")),
+        )
+    with pytest.raises(ValueError, match="duplicate task/repeat identity"):
+        PairedExperimentSchedule(
+            design_identity=DIGEST_A,
+            entries=(entry, replace(entry, pair_id="phase3d-other-r0")),
+        )
 
 
 def test_multiple_included_attempts_for_same_pair_are_rejected() -> None:
@@ -205,6 +242,39 @@ def test_attempt_after_included_terminal_outcome_is_rejected() -> None:
     )
 
     with pytest.raises(PairedAnalysisError, match="after an included terminal outcome"):
+        audit_paired_ledger(schedule, attempts)
+
+
+def test_excluded_attempt_cannot_carry_terminal_outcomes() -> None:
+    entry = _schedule(1).entries[0]
+    attempt = _excluded(entry, reason=ExclusionReason.EXPERIMENT_ACCOUNTING_UNKNOWN)
+
+    with pytest.raises(ValueError, match="cannot carry terminal arm outcomes"):
+        replace(attempt, stock_resolved=False)
+    with pytest.raises(ValueError, match="cannot carry terminal arm outcomes"):
+        replace(attempt, adcp_resolved=True)
+
+
+def test_pair_attempt_requires_distinct_arm_manifest_identities() -> None:
+    entry = _schedule(1).entries[0]
+    attempt = _included(entry, stock=False, adcp=True)
+
+    with pytest.raises(ValueError, match="distinct Stock and ADCP manifest identities"):
+        replace(attempt, adcp_manifest_identity=attempt.stock_manifest_identity)
+
+
+def test_rerun_cannot_change_arm_manifest_identities() -> None:
+    schedule = _schedule(1)
+    entry = schedule.entries[0]
+    attempts = (
+        _excluded(entry, reason=ExclusionReason.PRE_DISPATCH_INFRASTRUCTURE_FAILURE, attempt_index=0),
+        replace(
+            _included(entry, stock=False, adcp=True, attempt_index=1),
+            stock_manifest_identity=DIGEST_C,
+        ),
+    )
+
+    with pytest.raises(PairedAnalysisError, match="changes arm manifest identities across attempts"):
         audit_paired_ledger(schedule, attempts)
 
 
