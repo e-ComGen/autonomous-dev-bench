@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from suites.coding.adcp_contract import (
@@ -13,6 +16,9 @@ from suites.coding.adcp_contract import (
     ADCPReceiptError,
     parse_adcp_runner_receipt,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _receipt(**overrides):
@@ -65,6 +71,22 @@ def _receipt(**overrides):
     }
     receipt.update(overrides)
     return receipt
+
+
+def test_adcp_lock_matches_public_contract_and_stays_not_paid_ready() -> None:
+    lock = json.loads((ROOT / "ADCP.lock.json").read_text(encoding="utf-8"))
+    assert lock["repository"] == ADCP_REPOSITORY
+    assert lock["commit"] == ADCP_COMMIT
+    assert lock["runtime"] == ADCP_RUNTIME
+    assert lock["integration"] == ADCP_INTEGRATION
+    assert lock["model_route"] == ADCP_MODEL_ROUTE
+    assert lock["provider_route"] == ADCP_PROVIDER_ROUTE
+    assert lock["public_process_receipt_schema"] == ADCP_RECEIPT_SCHEMA
+    assert lock["required_role_separation"] == ["architect", "coder", "reviewer", "verifier"]
+    assert lock["semantic_invariants"]["candidate_ready_is_task_completed"] is False
+    assert lock["semantic_invariants"]["model_calls_via_shared_budget_proxy"] is True
+    assert lock["semantic_invariants"]["upstream_provider_credential_visible_to_arm"] is False
+    assert lock["paid_ready"] is False
 
 
 def test_fake_qualification_receipt_accepts_explicit_bounded_repair_cycle() -> None:
