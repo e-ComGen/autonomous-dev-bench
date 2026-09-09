@@ -88,7 +88,8 @@ def main() -> int:
         "usage_url": usage_url,
         "listen_host": bound_host,
         "listen_port": bound_port,
-        "streaming_qualified": False,
+        "streaming_mode": "buffered_sse_usage_accounted",
+        "streaming_usage_required": True,
     }
     text = json.dumps(ready, sort_keys=True)
     if args.ready_file:
