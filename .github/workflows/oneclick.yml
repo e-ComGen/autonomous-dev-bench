@@ -1,0 +1,64 @@
+name: One-click foundation
+on:
+  push:
+    branches: [feat/oneclick-benchmark-foundation]
+permissions:
+  contents: read
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Existing and new regression tests
+        run: python -m pytest -q --junitxml=artifacts/tests.xml
+      - name: Audit legacy file pins against exact Git blobs
+        run: python tools/audit_corpus_pins.py
+      - name: Verify pinned real source and export offline seeds
+        run: python tools/bench.py projects --allow-network
+      - name: Download pinned universal test wheels
+        run: |
+          python -m pip download --only-binary=:all: --dest vendor/wheels -r tools/requirements-launcher.txt
+      - name: Assemble tracked source and offline payloads
+        run: python tools/package_release.py
+      - name: Exercise actual launcher without git metadata in a path with spaces
+        run: python tools/verify_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneclick-evidence-${{ matrix.os }}
+          path: |
+            artifacts/tests.xml
+            artifacts/pin-audit.json
+            artifacts/release-evidence/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneclick-diagnostics-${{ matrix.os }}
+          path: |
+            .bench/latest.json
+            .bench/runs/**/summary.json
+            .bench/runs/**/*.log
+            .bench/runs/**/*.xml
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'ubuntu-latest'
+        with:
+          name: autobenchmark-oneclick
+          path: artifacts/autobenchmark/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error

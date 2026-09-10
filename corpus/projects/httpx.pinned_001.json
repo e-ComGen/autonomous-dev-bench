@@ -9,7 +9,7 @@
   "legal": {
     "license_spdx": "BSD-3-Clause",
     "license_file": "LICENSE.md",
-    "license_file_digest": "sha256:eb237e056a490d1f290e4dfa3cc342a04c64a89701385f86a847cdbe4d21957d"
+    "license_file_digest": "sha256:4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d"
   },
   "platforms": {"operating_systems": ["linux", "windows"], "python": ["3.11", "3.12", "3.13"]},
   "bootstrap": {
