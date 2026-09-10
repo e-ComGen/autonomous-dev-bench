@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  ADCP_COMMIT: e49dc70bfc3552eb07bc55ed45824dbe118ab0eb
+  ADCP_COMMIT: d10cfbb0446ead359ab026f64cb5447dcce36782
 
 jobs:
   base-tree-contract:
