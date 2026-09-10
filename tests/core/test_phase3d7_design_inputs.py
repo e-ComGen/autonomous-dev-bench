@@ -72,12 +72,12 @@ def test_phase3d7_selected_inputs_reproduce_committed_lock_without_outcomes() ->
     assert str(sensitivity.content_digest) == evidence_committed["decision"]["sensitivity_report_digest"]["value"]
 
 
-def test_locked_design_does_not_bypass_external_paid_admission_gates() -> None:
+def test_locked_design_and_recorded_external_qualification_enable_paid_admission_without_starting_it() -> None:
     admission = PaidAdmissionSnapshot.from_repository(ROOT)
 
     assert admission.experiment_design.design_paid_ready is True
-    assert admission.paid_ready is False
-    assert "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS" in admission.blockers
-    assert "DEEPSEEK_ESTIMATOR_NOT_PAID_READY" in admission.blockers
-    assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" not in admission.blockers
-    assert "ADCP_NOT_PAID_READY" in admission.blockers
+    assert admission.paid_ready is True
+    assert admission.blockers == ()
+    locked = _read("PHASE3D_EXPERIMENT_PLAN.json")
+    assert locked["paid_paired_ab"] == "NOT_RUN"
+    assert locked["winner"] == "UNKNOWN"
