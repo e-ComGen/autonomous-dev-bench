@@ -146,8 +146,8 @@ def main() -> int:
         SessionJournal,
         SessionLimits,
         WriteScope,
+        ZoneDevelopmentRuntime,
     )
-    from packages.zone_development.assured_runtime import ZoneDevelopmentRuntime
     from packages.zone_development.workspace import GitWorkspace
 
     class PublicHandoffVerifier:
