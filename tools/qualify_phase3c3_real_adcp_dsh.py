@@ -3,7 +3,7 @@
 This is an offline production-binding qualification, not a paid model trial. A
 local HTTP/SSE provider returns deterministic role semantics while the shipping
 DeepSeek Harness SDK/runtime, ADCP HarnessGateway, durable exchange journal,
-pinned assured ZoneDevelopmentRuntime and real Git worktree all execute.
+pinned public ZoneDevelopmentRuntime and real Git worktree all execute.
 """
 from __future__ import annotations
 
@@ -185,8 +185,9 @@ def main() -> int:
     from packages.harness_bridge.gateway import HarnessGateway
     from packages.harness_bridge.journal import ExchangeJournal
     from packages.harness_bridge.zone import HarnessCoder, HarnessLocalArchitect, HarnessReviewer
-    from packages.zone_development import ECACCVerifier, OutcomeStatus, Role, RoleIdentity, RoleServices
-    from packages.zone_development.assured_runtime import ZoneDevelopmentRuntime
+    from packages.zone_development import (
+        ECACCVerifier, OutcomeStatus, Role, RoleIdentity, RoleServices, ZoneDevelopmentRuntime,
+    )
 
     server = ScriptedDeepSeekServer(("127.0.0.1", 0), ScriptedHandler)
     thread = Thread(target=server.serve_forever, daemon=True)

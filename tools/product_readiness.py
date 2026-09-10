@@ -1,9 +1,10 @@
 """Fail-closed one-click product readiness campaign.
 
 This tool is intended to be launched by product_readiness.bat from a clean pinned
-checkout. It never starts the 370-pair paid experiment. If an explicit DeepSeek
-credential exists it performs only the preregistered 8-token live prompt-usage
-parity call; otherwise live readiness is BLOCKED and PRODUCT READY is NO.
+checkout. It never starts the 370-pair paid experiment. If an exact prior live
+capture exists it is reused; otherwise an explicit DeepSeek credential permits
+only the preregistered 8-token live prompt-usage capture. Readiness validates
+provider usage against the pinned conservative reservation envelope.
 """
 from __future__ import annotations
 
@@ -171,8 +172,6 @@ def wsl_docker_check() -> str:
 
 
 def live_parity(root: Path, python: str, artifact_root: Path) -> str:
-    if not os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY", "").strip():
-        raise RuntimeError("AUTOBENCH_DEEPSEEK_API_KEY is not set")
     cache = artifact_root / "deepseek-estimator-cache"
     cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
@@ -191,16 +190,29 @@ def live_parity(root: Path, python: str, artifact_root: Path) -> str:
             env=env,
             timeout=180,
         ),
-        "minimal official DeepSeek live capture",
+        "minimal official DeepSeek live capture or exact capture reuse",
     )
-    parity_text = require_ok(
+    coverage_text = require_ok(
         run([python, "tools/verify_deepseek_v4_usage_parity.py", str(capture), "--cache-dir", str(cache)], cwd=root, env=env, timeout=180),
-        "DeepSeek exact prompt-token parity",
+        "DeepSeek provider prompt-usage coverage",
     )
-    value = json.loads(parity_text)
-    if value.get("status") != "PASS" or value.get("exact_match") is not True:
-        raise RuntimeError("DeepSeek live prompt-token parity is not exact")
-    return f"prompt_tokens={value['provider_prompt_tokens']} exact_match=true"
+    value = json.loads(coverage_text)
+    required_true = (
+        "coverage_pass",
+        "request_policy_matches",
+        "provider_above_lower_reference",
+        "reference_envelope_non_underestimate",
+        "effort_prefix_structure_ok",
+        "provider_usage_source_of_truth",
+    )
+    if value.get("status") != "PASS" or any(value.get(name) is not True for name in required_true):
+        raise RuntimeError("DeepSeek live provider usage is not safely covered by the pinned reservation model")
+    return (
+        f"provider_prompt_tokens={value['provider_prompt_tokens']}; "
+        f"lower_reference={value['no_effort_prefix_reference_input_tokens']}; "
+        f"reservation={value['reference_envelope_input_tokens']}; "
+        f"headroom={value['reservation_headroom_tokens']}; coverage=true"
+    )
 
 
 def main() -> int:

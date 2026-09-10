@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from hashlib import sha256
 import importlib.metadata
 import json
@@ -65,10 +66,6 @@ def _run_official_encoder_tests(test_script: Path, encoding_file: Path) -> dict[
     if not test_script.is_file() or not encoding_file.is_file():
         raise RuntimeError("pinned official encoder test assets are missing after download")
 
-    # Keep the official test script byte-identical. Hugging Face cache paths may
-    # resolve individual assets through different symlink/blob locations, so
-    # make the pinned encoding module explicitly importable instead of patching
-    # the upstream test or assuming one cache-directory layout.
     env = dict(os.environ)
     python_path = [str(encoding_file.parent), str(test_script.parent)]
     existing = env.get("PYTHONPATH")
@@ -101,27 +98,30 @@ def _run_official_encoder_tests(test_script: Path, encoding_file: Path) -> dict[
     }
 
 
-def _wire_case_1(lock: dict[str, object], assets: dict[str, Path], cache_dir: Path) -> dict[str, object]:
+def _estimator(lock: dict[str, object], cache_dir: Path) -> DeepSeekV4RequestEstimator:
     source = lock["source"]
-    case = _load_json(assets["encoding/tests/test_input_1.json"])
-    if not isinstance(case, dict) or not isinstance(case.get("messages"), list) or not isinstance(case.get("tools"), list):
-        raise RuntimeError("official DeepSeek-V4 case 1 has an unexpected shape")
-
-    estimator = DeepSeekV4RequestEstimator.from_huggingface_revision(
+    return DeepSeekV4RequestEstimator.from_huggingface_revision(
         expected_model=DEEPSEEK_V4_MODEL,
         repo_id=source["repo_id"],
         revision=source["revision"],
         cache_dir=cache_dir,
         allow_network=False,
     )
+
+
+def _wire_case_1(lock: dict[str, object], assets: dict[str, Path], cache_dir: Path) -> dict[str, object]:
+    case = _load_json(assets["encoding/tests/test_input_1.json"])
+    if not isinstance(case, dict) or not isinstance(case.get("messages"), list) or not isinstance(case.get("tools"), list):
+        raise RuntimeError("official DeepSeek-V4 case 1 has an unexpected shape")
+
+    estimator = _estimator(lock, cache_dir)
     request = {
         "model": DEEPSEEK_V4_MODEL,
         "messages": case["messages"],
         "tools": case["tools"],
         "thinking": {"type": "enabled"},
-        # The official golden test omits reasoning_effort. The pinned encoder's
-        # default for the 0731 reference case is the estimator's explicit low
-        # policy when thinking is enabled and no effort is supplied.
+        # Official golden case 1 omits reasoning_effort and therefore exercises
+        # the pinned reference encoder's own low/no-prefix default.
         "max_tokens": 128,
         "stream": True,
         "stream_options": {"include_usage": True},
@@ -153,6 +153,53 @@ def _wire_case_1(lock: dict[str, object], assets: dict[str, Path], cache_dir: Pa
     }
 
 
+def _live_parity_reference_decomposition(
+    lock: dict[str, object], cache_dir: Path
+) -> dict[str, object]:
+    """Qualify the exact high-vs-low reference prefix for the live probe shape.
+
+    This is entirely offline. It never uses provider usage and never calls a
+    model; it proves only what the pinned official encoder/tokenizer themselves
+    contribute when the separate reasoning_effort control changes high -> low.
+    """
+    estimator = _estimator(lock, cache_dir)
+    high_request: dict[str, object] = {
+        "model": DEEPSEEK_V4_MODEL,
+        "messages": [
+            {"role": "system", "content": "Answer briefly."},
+            {"role": "user", "content": "Reply with OK."},
+        ],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "high",
+        "max_tokens": 8,
+    }
+    low_request = deepcopy(high_request)
+    low_request["reasoning_effort"] = "low"
+    high = estimator.estimate(high_request)
+    low = estimator.estimate(low_request)
+    prefix_tokens = high.input_tokens - low.input_tokens
+    if low.input_tokens <= 0:
+        raise RuntimeError("live parity low/no-prefix reference produced no input tokens")
+    if prefix_tokens <= 0:
+        raise RuntimeError("pinned high reasoning-effort reference prefix is not token-positive")
+    return {
+        "request_identity": {
+            "model": DEEPSEEK_V4_MODEL,
+            "system": "Answer briefly.",
+            "user": "Reply with OK.",
+            "thinking": "enabled",
+            "reasoning_effort": "high",
+            "max_tokens": 8,
+        },
+        "high_reference_input_tokens": high.input_tokens,
+        "low_no_prefix_input_tokens": low.input_tokens,
+        "high_effort_prefix_tokens": prefix_tokens,
+        "paid_model_called": False,
+    }
+
+
 def _dependency_versions(lock: dict[str, object]) -> dict[str, str]:
     expected = lock["python_dependencies"]
     package_names = {
@@ -180,6 +227,7 @@ def qualify(evidence_path: Path) -> dict[str, object]:
             assets[source["encoding_file"]],
         )
         wire = _wire_case_1(lock, assets, cache_dir)
+        live_probe_reference = _live_parity_reference_decomposition(lock, cache_dir)
         hashes = {name: _sha256(path) for name, path in sorted(assets.items())}
 
     evidence = {
@@ -196,6 +244,7 @@ def qualify(evidence_path: Path) -> dict[str, object]:
         "dependencies": _dependency_versions(lock),
         "official_encoder_golden_cases": official,
         "wire_adapter_prompt_parity": wire,
+        "live_probe_reference_decomposition": live_probe_reference,
         "tokenizer_load": "PASS",
         "provider_usage_source_of_truth": True,
         "live_provider_prompt_usage_parity": False,

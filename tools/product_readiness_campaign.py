@@ -75,23 +75,24 @@ def _run_core(root: Path, workspace: Path) -> dict[str, object]:
 def _local_paid_preflight(root: Path, workspace: Path) -> tuple[bool, str]:
     artifacts = workspace / "artifacts"
     adcp_evidence_path = artifacts / "PHASE3C3_REAL_ADCP_DSH.json"
-    parity_path = artifacts / "deepseek-live-capture.json"
-    parity_result_path = artifacts / "deepseek-live-parity.json"
+    capture_path = artifacts / "deepseek-live-capture.json"
+    coverage_result_path = artifacts / "deepseek-live-parity.json"
     if not adcp_evidence_path.is_file():
         return False, "real ADCP qualification evidence is missing"
     adcp_evidence = _read(adcp_evidence_path)
     if adcp_evidence.get("status") != "PASS" or adcp_evidence.get("production_ready") is not True:
         return False, "real ADCP qualification evidence is not PASS"
-    if not parity_path.is_file():
+    if not capture_path.is_file():
         return False, "DeepSeek live capture is missing"
 
-    # product_readiness.py runs the verifier and stores its stdout only in the
-    # console. Re-run the no-network verifier into a durable JSON artifact.
+    # Re-run the no-network verifier into durable evidence. The committed lock
+    # keeps its historical compatibility key `live_provider_prompt_usage_parity`,
+    # but promotion is based on the stricter structured coverage evidence below.
     cache = artifacts / "deepseek-estimator-cache"
     command = [
         sys.executable,
         str(root / "tools" / "verify_deepseek_v4_usage_parity.py"),
-        str(parity_path),
+        str(capture_path),
         "--cache-dir",
         str(cache),
     ]
@@ -107,14 +108,23 @@ def _local_paid_preflight(root: Path, workspace: Path) -> tuple[bool, str]:
         check=False,
     )
     if completed.returncode:
-        return False, "DeepSeek live parity verifier is not PASS: " + (completed.stdout or "")[-2000:]
+        return False, "DeepSeek live usage verifier is not PASS: " + (completed.stdout or "")[-2000:]
     try:
-        parity = json.loads(completed.stdout)
+        coverage = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
-        return False, f"DeepSeek parity verifier returned invalid JSON: {error}"
-    _write(parity_result_path, parity)
-    if parity.get("status") != "PASS" or parity.get("exact_match") is not True:
-        return False, "DeepSeek live prompt-token parity is not exact"
+        return False, f"DeepSeek usage verifier returned invalid JSON: {error}"
+    _write(coverage_result_path, coverage)
+
+    required_true = (
+        "coverage_pass",
+        "request_policy_matches",
+        "provider_above_lower_reference",
+        "reference_envelope_non_underestimate",
+        "effort_prefix_structure_ok",
+        "provider_usage_source_of_truth",
+    )
+    if coverage.get("status") != "PASS" or any(coverage.get(name) is not True for name in required_true):
+        return False, "DeepSeek provider usage is not safely covered by the pinned reservation model"
 
     overlay = workspace / "paid-admission-overlay"
     if overlay.exists():
@@ -143,10 +153,16 @@ def _local_paid_preflight(root: Path, workspace: Path) -> tuple[bool, str]:
     estimator["paid_ready"] = True
     estimator["production_blocker"] = None
     estimator["local_product_readiness_evidence"] = {
-        "scope": parity.get("scope"),
-        "provider_prompt_tokens": parity.get("provider_prompt_tokens"),
-        "estimated_input_tokens": parity.get("estimated_input_tokens"),
-        "exact_match": parity.get("exact_match"),
+        "scope": coverage.get("scope"),
+        "qualification_mode": coverage.get("qualification_mode"),
+        "provider_prompt_tokens": coverage.get("provider_prompt_tokens"),
+        "no_effort_prefix_reference_input_tokens": coverage.get("no_effort_prefix_reference_input_tokens"),
+        "reference_envelope_input_tokens": coverage.get("reference_envelope_input_tokens"),
+        "reference_effort_prefix_tokens": coverage.get("reference_effort_prefix_tokens"),
+        "reservation_headroom_tokens": coverage.get("reservation_headroom_tokens"),
+        "request_policy_matches": coverage.get("request_policy_matches"),
+        "coverage_pass": coverage.get("coverage_pass"),
+        "provider_usage_source_of_truth": coverage.get("provider_usage_source_of_truth"),
     }
     _write(overlay / "DEEPSEEK_V4_ESTIMATOR.lock.json", estimator)
 
@@ -155,7 +171,7 @@ def _local_paid_preflight(root: Path, workspace: Path) -> tuple[bool, str]:
         return False, "paid admission remains blocked: " + ", ".join(admission.blockers)
     if admission.blockers:
         return False, "paid admission reports blockers despite paid_ready"
-    return True, "all locked design + DeepSeek + ADCP admission gates PASS in local evidence overlay"
+    return True, "all locked design + DeepSeek usage coverage + ADCP admission gates PASS in local evidence overlay"
 
 
 def main() -> int:

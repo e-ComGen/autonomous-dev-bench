@@ -2,8 +2,8 @@
   "schema_version": 1,
   "role": "orchestrated_arm_private_runtime_identity",
   "repository": "e-ComGen/autonomous-dev-control-plane",
-  "commit": "285702063815280398b95ba8696566259c8b5b34",
-  "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+  "commit": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+  "runtime": "packages.zone_development.ZoneDevelopmentRuntime",
   "integration": "existing-v2-runtime-role-ports",
   "model_route": "deepseek-v4-flash",
   "provider_route": "deepseek-official",
@@ -36,7 +36,16 @@
     "private_runtime_loaded": false,
     "production_ready": false
   },
-  "private_pinned_runtime_qualification_status": "NOT_RUN",
-  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED",
-  "paid_ready": false
+  "private_pinned_runtime_qualification_status": "PASS",
+  "host_product_readiness": {
+    "status": "PASS",
+    "qualified_benchmark_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+    "qualification_record": "qualification/PHASE3D_PRODUCT_READINESS_HOST_20260910.json",
+    "runtime_loaded": true,
+    "real_deepseek_harness_subprocess": true,
+    "real_harbor_process_boundary": true,
+    "paid_model_campaign_started": false
+  },
+  "production_blocker": null,
+  "paid_ready": true
 }

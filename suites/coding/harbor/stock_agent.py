@@ -1,5 +1,4 @@
 """Harbor adapter that preserves the stock DeepSeek Harness as the coding agent."""
-
 from __future__ import annotations
 
 import hashlib
@@ -31,23 +30,22 @@ class StockDeepSeekAgent(BaseAgent):
         self.model_name = model_name or "deepseek-v4-flash"
 
     def version(self) -> str:
-        return "1.0.0"
+        return "1.1.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         if not await environment.is_file(self.RUNNER_PATH):
             raise FileNotFoundError(f"stock DeepSeek runner missing from task image: {self.RUNNER_PATH}")
 
-    async def run(
-        self,
-        instruction: str,
-        environment: BaseEnvironment,
-        context: AgentContext,
-    ) -> None:
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         base_url = os.environ.get("AUTOBENCH_DEEPSEEK_BASE_URL")
         api_key = os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY")
         if not base_url or not api_key:
             raise ValueError("StockDeepSeekAgent requires controller-side DeepSeek route credentials")
+        arm_timeout = int(os.environ.get("AUTOBENCH_ARM_WALL_TIME_SECONDS", "600"))
+        max_output_per_request = int(os.environ.get("AUTOBENCH_MAX_OUTPUT_TOKENS_PER_REQUEST", "16384"))
+        if not 1 <= arm_timeout <= 3600 or not 1 <= max_output_per_request <= 65536:
+            raise ValueError("invalid locked Stock arm timeout/output request cap")
 
         prompt_file = self.logs_dir / "INSTRUCTION.md"
         prompt_file.write_text(instruction, encoding="utf-8")
@@ -65,6 +63,7 @@ class StockDeepSeekAgent(BaseAgent):
             "AUTOBENCH_DSH_PROVIDER": "deepseek-official",
             "AUTOBENCH_DSH_MODEL": self.model_name,
             "AUTOBENCH_DSH_SESSION_ID": f"harbor-{self.logs_dir.parent.name}",
+            "AUTOBENCH_DSH_MAX_TOKENS": str(max_output_per_request),
         }
         usage_url = os.environ.get("AUTOBENCH_DEEPSEEK_USAGE_URL")
         if usage_url:
@@ -76,7 +75,7 @@ class StockDeepSeekAgent(BaseAgent):
             f"python {self.RUNNER_PATH}",
             cwd=workspace.repository_root,
             env=runner_env,
-            timeout_sec=120,
+            timeout_sec=arm_timeout,
         )
         if execution.return_code != 0:
             stderr = (execution.stderr or execution.stdout or "")[-4000:]
@@ -92,20 +91,30 @@ class StockDeepSeekAgent(BaseAgent):
         if result.get("model") != self.model_name:
             raise ValueError("stock DeepSeek model identity changed")
 
+        # Empty output is a valid weak task result: official SWE-bench will grade
+        # it UNRESOLVED. It must not become an infrastructure exclusion.
         patch = await workspace.git_diff()
-        if not patch.strip():
-            raise ValueError("stock DeepSeek Harness produced no repository patch")
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
 
         usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
-        prompt_tokens = usage.get("prompt_tokens")
-        completion_tokens = usage.get("completion_tokens")
-        cache_tokens = usage.get("cache_tokens", 0)
+        proxy_budget = usage.get("budget") if isinstance(usage.get("budget"), dict) else None
+        if proxy_budget is not None:
+            if usage.get("accounting_unknown") is not False or proxy_budget.get("open_reservations") != 0:
+                raise ValueError("Stock budget proxy accounting is not clean")
+            prompt_tokens = proxy_budget.get("input_tokens")
+            completion_tokens = proxy_budget.get("output_tokens")
+            cache_tokens = proxy_budget.get("cache_tokens", 0)
+        else:
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
+            cache_tokens = usage.get("cache_tokens", 0)
         context.n_input_tokens = prompt_tokens if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool) else None
         context.n_output_tokens = completion_tokens if isinstance(completion_tokens, int) and not isinstance(completion_tokens, bool) else None
         context.n_cache_tokens = cache_tokens if isinstance(cache_tokens, int) and not isinstance(cache_tokens, bool) else None
-        context.cost_usd = 0.0 if result.get("fake_model") is True else None
+        context.cost_usd = 0.0 if result.get("fake_model") is True else (
+            float(proxy_budget.get("cost_usd", 0.0)) if proxy_budget is not None else None
+        )
         context.metadata = {
             "autonomous_dev_bench": {
                 "agent": "stock_deepseek_harness",
@@ -121,7 +130,10 @@ class StockDeepSeekAgent(BaseAgent):
                 "final_response": result.get("final_response"),
                 "event_count": result.get("event_count"),
                 "fake_model": result.get("fake_model") is True,
+                "task_level_failure": not bool(patch.strip()),
+                "max_output_tokens_per_request": max_output_per_request,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
+                "budget_proxy": proxy_budget,
             }
         }

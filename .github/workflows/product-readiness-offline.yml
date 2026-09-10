@@ -17,6 +17,9 @@ on:
 permissions:
   contents: read
 
+env:
+  ADCP_COMMIT: e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13
+
 jobs:
   deepseek-harness-and-private-adcp:
     runs-on: ubuntu-latest
@@ -103,6 +106,14 @@ jobs:
               server.shutdown()
               server.server_close()
               thread.join(timeout=5)
+      - name: Assert workflow pin matches ADCP lock
+        shell: python
+        run: |
+          import json, os
+          from pathlib import Path
+          lock = json.loads(Path('ADCP.lock.json').read_text(encoding='utf-8'))
+          assert lock['commit'] == os.environ['ADCP_COMMIT'], (lock['commit'], os.environ['ADCP_COMMIT'])
+          assert lock['runtime'] == 'packages.zone_development.ZoneDevelopmentRuntime'
       - name: Record private ADCP qualification availability
         shell: bash
         run: |
@@ -116,7 +127,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: e-ComGen/autonomous-dev-control-plane
-          ref: 285702063815280398b95ba8696566259c8b5b34
+          ref: ${{ env.ADCP_COMMIT }}
           token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
           path: .product-readiness-adcp
           persist-credentials: false
@@ -147,6 +158,9 @@ jobs:
           value = json.loads(Path('artifacts/product-readiness/PHASE3C3_REAL_ADCP_DSH.json').read_text(encoding='utf-8'))
           assert value['status'] == 'PASS'
           assert value['runtime_loaded'] is True
+          assert value['target_runtime']['commit'] == 'e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13'
+          assert value['target_runtime']['runtime'] == 'packages.zone_development.ZoneDevelopmentRuntime'
+          assert value['runtime_class'] == 'packages.zone_development.projection_runtime.ZoneDevelopmentRuntime'
           assert value['real_deepseek_harness_subprocess'] is True
           assert value['production_binding_qualified'] is True
           assert value['production_ready'] is True

@@ -98,6 +98,37 @@ def capture(
     }
 
 
+def reusable_capture(path: Path, expected_request: dict[str, object]) -> dict[str, object] | None:
+    """Return a prior raw provider capture only when its identity is exact.
+
+    This intentionally reuses provider evidence, not a previous verifier result.
+    Any request/provider/model/usage drift forces a fresh live capture instead.
+    """
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    if value.get("scope") != "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_CAPTURE":
+        return None
+    if value.get("provider") != PROVIDER or value.get("model") != MODEL:
+        return None
+    if value.get("model_called") is not True or value.get("credential_recorded") is not False:
+        return None
+    if value.get("request") != expected_request:
+        return None
+    usage = value.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    prompt_tokens = usage.get("prompt_tokens")
+    if isinstance(prompt_tokens, bool) or not isinstance(prompt_tokens, int) or prompt_tokens < 0:
+        return None
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -107,12 +138,19 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=8)
     args = parser.parse_args()
 
+    request_body = parity_request(text=args.text, max_tokens=args.max_tokens)
+    existing = reusable_capture(args.output, request_body)
+    if existing is not None:
+        print(f"reused provider prompt_tokens={existing['usage']['prompt_tokens']}")
+        print(f"evidence={args.output}")
+        return 0
+
     api_key = os.environ.get(args.api_key_env, "")
     if not api_key.strip():
         raise SystemExit(f"required credential environment variable is missing: {args.api_key_env}")
 
     result = capture(
-        parity_request(text=args.text, max_tokens=args.max_tokens),
+        request_body,
         api_key=api_key,
         base_url=args.base_url,
     )

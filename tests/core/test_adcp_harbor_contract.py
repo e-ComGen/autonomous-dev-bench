@@ -73,7 +73,7 @@ def _receipt(**overrides):
     return receipt
 
 
-def test_adcp_lock_matches_public_contract_and_stays_not_paid_ready() -> None:
+def test_adcp_lock_matches_public_contract_and_recorded_host_qualification() -> None:
     lock = json.loads((ROOT / "ADCP.lock.json").read_text(encoding="utf-8"))
     assert lock["repository"] == ADCP_REPOSITORY
     assert lock["commit"] == ADCP_COMMIT
@@ -86,7 +86,11 @@ def test_adcp_lock_matches_public_contract_and_stays_not_paid_ready() -> None:
     assert lock["semantic_invariants"]["candidate_ready_is_task_completed"] is False
     assert lock["semantic_invariants"]["model_calls_via_shared_budget_proxy"] is True
     assert lock["semantic_invariants"]["upstream_provider_credential_visible_to_arm"] is False
-    assert lock["paid_ready"] is False
+    assert lock["private_pinned_runtime_qualification_status"] == "PASS"
+    assert lock["host_product_readiness"]["status"] == "PASS"
+    assert lock["host_product_readiness"]["paid_model_campaign_started"] is False
+    assert lock["paid_ready"] is True
+    assert lock["production_blocker"] is None
 
 
 def test_fake_qualification_receipt_accepts_explicit_bounded_repair_cycle() -> None:

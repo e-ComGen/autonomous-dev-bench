@@ -1,11 +1,9 @@
 """Harbor adapter for the externally supplied ADCP runner process.
 
-The public benchmark does not vendor or import the private ADCP runtime. The task
-image/operator supplies ``/opt/autobench/run_adcp.py``. This adapter passes only
-the budget-proxy route/credential, validates the strict public receipt, and
-exports the actual Harbor workspace diff independently of that receipt.
+Qualification V1 remains strict CANDIDATE_READY evidence. Paid V2 accepts the
+runtime's other canonical bounded terminal outcomes as valid task failures, so a
+weak ADCP result becomes UNRESOLVED instead of an infrastructure exclusion.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -22,16 +20,16 @@ from suites.coding.adcp_contract import (
     ADCP_COMMIT,
     ADCP_INTEGRATION,
     ADCP_MODEL_ROUTE,
+    ADCP_PAID_RECEIPT_SCHEMA,
     ADCP_REPOSITORY,
     ADCP_RUNTIME,
+    parse_adcp_paid_runner_receipt,
     parse_adcp_runner_receipt,
 )
 from .workspace import HarborWorkspaceFacade
 
 
 class ADCPHarborAgent(BaseAgent):
-    """Run one externally composed ADCP development session inside Harbor."""
-
     RUNNER_PATH = "/opt/autobench/run_adcp.py"
     INSTRUCTION_PATH = "/tmp/autobench-adcp-instruction.md"
     RESULT_PATH = "/tmp/autobench-adcp-result.json"
@@ -45,24 +43,20 @@ class ADCPHarborAgent(BaseAgent):
         self.model_name = model_name or ADCP_MODEL_ROUTE
 
     def version(self) -> str:
-        return "1.0.0"
+        return "1.1.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         if not await environment.is_file(self.RUNNER_PATH):
-            raise FileNotFoundError(
-                f"external ADCP runner missing from task image: {self.RUNNER_PATH}"
-            )
+            raise FileNotFoundError(f"external ADCP runner missing from task image: {self.RUNNER_PATH}")
 
-    async def run(
-        self,
-        instruction: str,
-        environment: BaseEnvironment,
-        context: AgentContext,
-    ) -> None:
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         proxy_base_url = self._required_env("AUTOBENCH_MODEL_PROXY_BASE_URL")
         proxy_token = self._required_env("AUTOBENCH_MODEL_PROXY_TOKEN")
         fake_runtime = os.environ.get("AUTOBENCH_ADCP_FAKE_RUNTIME") == "1"
+        arm_timeout = int(os.environ.get("AUTOBENCH_ARM_WALL_TIME_SECONDS", "600"))
+        if not 1 <= arm_timeout <= 3600:
+            raise ValueError("AUTOBENCH_ARM_WALL_TIME_SECONDS is invalid")
 
         instruction_file = self.logs_dir / "INSTRUCTION.md"
         instruction_file.write_text(instruction, encoding="utf-8")
@@ -73,9 +67,6 @@ class ADCPHarborAgent(BaseAgent):
         await workspace.require_clean_tracked_baseline()
         baseline_untracked = await workspace.untracked_paths()
 
-        # Defence in depth: the runner environment must not already contain a
-        # separately named upstream key. DEEPSEEK_API_KEY below is intentionally
-        # the proxy credential, matching the stock Harness environment contract.
         credential_probe = await environment.exec(
             "test -z \"${AUTOBENCH_DEEPSEEK_UPSTREAM_API_KEY:-}\"",
             cwd=workspace.repository_root,
@@ -94,8 +85,6 @@ class ADCPHarborAgent(BaseAgent):
             "AUTOBENCH_ADCP_MODEL": self.model_name,
             "AUTOBENCH_ADCP_PROVIDER": "deepseek-official",
             "AUTOBENCH_MODEL_PROXY_MODE": "1",
-            # Existing DeepSeek/Harness consumers can use their normal variable
-            # names while receiving only proxy connection facts.
             "DEEPSEEK_BASE_URL": proxy_base_url,
             "DEEPSEEK_API_KEY": proxy_token,
         }
@@ -106,28 +95,42 @@ class ADCPHarborAgent(BaseAgent):
             f"python3 {self.RUNNER_PATH}",
             cwd=workspace.repository_root,
             env=runner_env,
-            timeout_sec=180,
+            timeout_sec=arm_timeout,
         )
         if execution.return_code != 0:
             diagnostic = (execution.stderr or execution.stdout or "")[-5000:]
-            raise RuntimeError(
-                f"external ADCP runner failed ({execution.return_code}): {diagnostic}"
-            )
+            raise RuntimeError(f"external ADCP runner failed ({execution.return_code}): {diagnostic}")
 
         local_result = self.logs_dir / "ADCP_RESULT.json"
         await environment.download_file(self.RESULT_PATH, local_result)
         raw = json.loads(local_result.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("external ADCP runner returned a non-object receipt")
-        receipt = parse_adcp_runner_receipt(
-            raw,
-            allow_fake_runtime=fake_runtime,
-            require_repair_cycle=fake_runtime,
-        )
 
-        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
-        if not patch.strip():
-            raise ValueError("ADCP runner reached CANDIDATE_READY without an observable workspace patch")
+        paid_receipt = raw.get("schema") == ADCP_PAID_RECEIPT_SCHEMA
+        if paid_receipt:
+            if fake_runtime:
+                raise ValueError("paid ADCP receipt cannot be combined with fake runtime mode")
+            receipt = parse_adcp_paid_runner_receipt(raw)
+        else:
+            receipt = parse_adcp_runner_receipt(
+                raw,
+                allow_fake_runtime=fake_runtime,
+                require_repair_cycle=fake_runtime,
+            )
+
+        if receipt.candidate_ready:
+            patch = await workspace.git_diff_from(
+                baseline_commit,
+                baseline_untracked=baseline_untracked,
+            )
+            if not patch.strip():
+                raise ValueError("ADCP CANDIDATE_READY has no observable baseline-relative patch")
+        else:
+            # A bounded ADCP refusal/failure is a valid experimental outcome. It
+            # submits no candidate to the official grader and therefore grades
+            # UNRESOLVED instead of being eligible for infrastructure exclusion.
+            patch = ""
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
 
@@ -136,40 +139,47 @@ class ADCPHarborAgent(BaseAgent):
         context.n_output_tokens = usage["output_tokens"]
         context.n_cache_tokens = usage["cache_tokens"]
         context.cost_usd = usage["cost_usd"]
-        context.metadata = {
-            "autonomous_dev_bench": {
-                "agent": "adcp",
-                "baseline_commit": baseline_commit,
-                "environment_id": getattr(environment, "environment_id", None),
-                "target_runtime": {
-                    "repository": receipt.target_runtime.repository,
-                    "commit": receipt.target_runtime.commit,
-                    "runtime": receipt.target_runtime.runtime,
-                    "integration": receipt.target_runtime.integration,
-                },
-                "runtime_loaded": receipt.runtime_loaded,
-                "fake_runtime": receipt.fake_runtime,
-                "role_ids": dict(receipt.role_ids),
-                "role_call_counts": dict(receipt.role_call_counts),
-                "event_sequence": list(receipt.event_sequence),
-                "outcome_status": receipt.outcome_status,
-                "candidate_ready": receipt.candidate_ready,
-                "task_completed": receipt.task_completed,
-                "repair_count": receipt.repair_count,
-                "session_id": receipt.session_id,
-                "request_id": receipt.request_id,
-                "candidate_snapshot_id": receipt.candidate_snapshot_id,
-                "model": receipt.model_route,
-                "provider": receipt.provider_route,
-                "model_called": receipt.model_called,
-                "model_calls_via_budget_proxy": receipt.model_calls_via_budget_proxy,
-                "upstream_provider_credential_present": receipt.upstream_provider_credential_present,
-                "proxy_credential_present": receipt.proxy_credential_present,
-                "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
-                "patch_bytes": len(patch.encode("utf-8")),
-                "budget_proxy": usage,
-            }
+        metadata = {
+            "agent": "adcp",
+            "baseline_commit": baseline_commit,
+            "environment_id": getattr(environment, "environment_id", None),
+            "target_runtime": {
+                "repository": receipt.target_runtime.repository,
+                "commit": receipt.target_runtime.commit,
+                "runtime": receipt.target_runtime.runtime,
+                "integration": receipt.target_runtime.integration,
+            },
+            "runtime_loaded": receipt.runtime_loaded,
+            "fake_runtime": getattr(receipt, "fake_runtime", False),
+            "role_ids": dict(receipt.role_ids),
+            "role_call_counts": dict(receipt.role_call_counts),
+            "event_sequence": list(receipt.event_sequence),
+            "outcome_status": receipt.outcome_status,
+            "candidate_ready": receipt.candidate_ready,
+            "task_level_failure": not receipt.candidate_ready,
+            "task_completed": receipt.task_completed,
+            "repair_count": receipt.repair_count,
+            "session_id": receipt.session_id,
+            "request_id": receipt.request_id,
+            "candidate_snapshot_id": receipt.candidate_snapshot_id,
+            "model": receipt.model_route,
+            "provider": receipt.provider_route,
+            "model_called": receipt.model_called,
+            "model_calls_via_budget_proxy": receipt.model_calls_via_budget_proxy,
+            "upstream_provider_credential_present": receipt.upstream_provider_credential_present,
+            "proxy_credential_present": receipt.proxy_credential_present,
+            "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
+            "patch_bytes": len(patch.encode("utf-8")),
+            "budget_proxy": usage,
         }
+        if paid_receipt:
+            metadata.update({
+                "scope_policy": receipt.scope_policy,
+                "scope_digest": receipt.scope_digest,
+                "write_scope_paths": list(receipt.write_scope_paths),
+                "internal_evaluation_policy": receipt.internal_evaluation_policy,
+            })
+        context.metadata = {"autonomous_dev_bench": metadata}
 
     @staticmethod
     def _required_env(name: str) -> str:
@@ -190,7 +200,6 @@ class ADCPHarborAgent(BaseAgent):
                 "cost_usd": 0.0,
                 "accounting_unknown": False,
             }
-
         url = os.environ.get("AUTOBENCH_MODEL_PROXY_USAGE_URL")
         if not url:
             raise ValueError("model-calling ADCP run requires AUTOBENCH_MODEL_PROXY_USAGE_URL")
@@ -203,7 +212,6 @@ class ADCPHarborAgent(BaseAgent):
         budget = payload["budget"]
         if budget.get("open_reservations") != 0:
             raise ValueError("budget proxy still has open model-call reservations")
-
         result: dict[str, int | float | bool] = {"accounting_unknown": False}
         for name in ("input_tokens", "output_tokens", "cache_tokens", "total_model_tokens", "requests"):
             value = budget.get(name)

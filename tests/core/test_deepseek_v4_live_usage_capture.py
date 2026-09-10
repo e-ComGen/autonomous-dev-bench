@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from threading import Thread
 
 import pytest
 
-from tools.capture_deepseek_v4_live_usage import MODEL, capture, parity_request
+from tools.capture_deepseek_v4_live_usage import MODEL, capture, parity_request, reusable_capture
 
 
 class _Provider(BaseHTTPRequestHandler):
@@ -84,6 +85,54 @@ def test_capture_preserves_request_and_terminal_usage_without_recording_credenti
     assert result["provider_request_id"] == "provider-request-1"
     assert result["credential_recorded"] is False
     assert token not in json.dumps(result)
+
+
+def test_reusable_capture_requires_exact_provider_model_and_wire_request(tmp_path: Path) -> None:
+    path = tmp_path / "capture.json"
+    request = parity_request(text="Reply with OK.", max_tokens=8)
+    evidence = {
+        "schema_version": 1,
+        "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_CAPTURE",
+        "request": request,
+        "usage": {"prompt_tokens": 37, "completion_tokens": 1, "total_tokens": 38},
+        "model_called": True,
+        "provider": "deepseek-official",
+        "model": MODEL,
+        "provider_request_id": "real-request-id",
+        "credential_recorded": False,
+    }
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    assert reusable_capture(path, request) == evidence
+
+    changed = parity_request(text="different", max_tokens=8)
+    assert reusable_capture(path, changed) is None
+    evidence["provider"] = "other-provider"
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+    assert reusable_capture(path, request) is None
+
+
+def test_reusable_capture_rejects_verifier_or_malformed_evidence(tmp_path: Path) -> None:
+    path = tmp_path / "capture.json"
+    request = parity_request(text="Reply with OK.", max_tokens=8)
+    path.write_text(
+        json.dumps(
+            {
+                "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
+                "request": request,
+                "usage": {"prompt_tokens": 37},
+                "model_called": True,
+                "provider": "deepseek-official",
+                "model": MODEL,
+                "credential_recorded": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert reusable_capture(path, request) is None
+
+    path.write_text("not-json", encoding="utf-8")
+    assert reusable_capture(path, request) is None
 
 
 def test_capture_fails_when_terminal_usage_is_missing() -> None:

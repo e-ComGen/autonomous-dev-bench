@@ -12,8 +12,8 @@
     "arm_b": {
       "name": "adcp",
       "implementation": "adcp_zone_development",
-      "commit": "285702063815280398b95ba8696566259c8b5b34",
-      "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+      "commit": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+      "runtime": "packages.zone_development.ZoneDevelopmentRuntime",
       "integration": "existing-v2-runtime-role-ports"
     },
     "model": "deepseek-v4-flash",

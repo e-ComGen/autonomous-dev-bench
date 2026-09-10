@@ -9,8 +9,9 @@ import sys
 import tempfile
 
 ADCP_REPOSITORY = "e-ComGen/autonomous-dev-control-plane"
-ADCP_COMMIT = "285702063815280398b95ba8696566259c8b5b34"
-ADCP_RUNTIME = "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime"
+ADCP_COMMIT = "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13"
+ADCP_RUNTIME = "packages.zone_development.ZoneDevelopmentRuntime"
+ADCP_RUNTIME_CLASS = "packages.zone_development.projection_runtime.ZoneDevelopmentRuntime"
 ADCP_INTEGRATION = "existing-v2-runtime-role-ports"
 
 
@@ -36,12 +37,12 @@ def qualify(adcp_path: Path) -> dict[str, object]:
 
     from examples.zone_development.fixture import ExternalZone
     from tests.harness_bridge.support import gateway, zone_handler
-    from packages.zone_development.assured_runtime import ZoneDevelopmentRuntime
+    from packages.zone_development import ZoneDevelopmentRuntime
     from packages.zone_development.contracts import DevelopmentOutcome, OutcomeStatus, Role
 
-    runtime_name = f"{ZoneDevelopmentRuntime.__module__}.{ZoneDevelopmentRuntime.__qualname__}"
-    if runtime_name != ADCP_RUNTIME:
-        raise ValueError(f"runtime mismatch: {runtime_name}")
+    runtime_class = f"{ZoneDevelopmentRuntime.__module__}.{ZoneDevelopmentRuntime.__qualname__}"
+    if runtime_class != ADCP_RUNTIME_CLASS:
+        raise ValueError(f"runtime class mismatch: {runtime_class}")
 
     with tempfile.TemporaryDirectory(prefix="autobench-phase3c2-") as temp:
         root = Path(temp)
@@ -56,7 +57,7 @@ def qualify(adcp_path: Path) -> dict[str, object]:
             verifier_id=zone.roles.verifier.identity.actor_id,
         )
         if type(runtime) is not ZoneDevelopmentRuntime:
-            raise ValueError("from_harness bypassed the assured runtime")
+            raise ValueError("from_harness bypassed the public qualified runtime")
 
         outcome = runtime.develop(zone.request, zone.worktree)
         if not isinstance(outcome, DevelopmentOutcome) or outcome.status is not OutcomeStatus.CANDIDATE_READY:
@@ -94,7 +95,8 @@ def qualify(adcp_path: Path) -> dict[str, object]:
             "target": {
                 "repository": ADCP_REPOSITORY,
                 "commit": head,
-                "runtime": runtime_name,
+                "runtime": ADCP_RUNTIME,
+                "runtime_class": runtime_class,
                 "integration": ADCP_INTEGRATION,
             },
             "private_runtime_loaded": True,

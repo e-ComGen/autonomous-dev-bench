@@ -79,6 +79,7 @@ jobs:
           assert schedule["entries"][0] == schedule_lock["first_entry"]
           assert schedule["entries"][-1] == schedule_lock["last_entry"]
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: phase3d7-design-lock-replay
           path: phase3d7-design/
