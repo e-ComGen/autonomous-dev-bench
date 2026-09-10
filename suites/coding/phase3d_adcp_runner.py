@@ -28,7 +28,7 @@ from suites.coding.adcp_dsh_binding import DeepSeekHarnessBinding, DeepSeekHarne
 from suites.coding.phase3d_scope import SCOPE_POLICY, select_write_scope
 
 
-INTERNAL_EVALUATION_POLICY = "phase3d-public-handoff-nonempty-change-v1"
+INTERNAL_EVALUATION_POLICY = "phase3d-public-handoff-canonical-binding-v2"
 SOURCE_BYTES = 512 * 1024
 PATCH_BYTES = 262144
 MAX_ROLE_CALLS = 16
@@ -151,9 +151,12 @@ def main() -> int:
     from packages.zone_development.workspace import GitWorkspace
 
     class PublicHandoffVerifier:
-        reference = ecacc.VerifierRef("autobench.public_handoff", "1")
+        reference = ecacc.VerifierRef("autobench.public_handoff", "2")
         evidence_kind = ecacc.EvidenceKind.STRUCTURE
         supported_obligations = (ecacc.ObligationKind.PRESERVATION, ecacc.ObligationKind.ACHIEVEMENT)
+
+        def __init__(self, expected_baseline):
+            self.expected_baseline = expected_baseline
 
         def validate(self, definition):
             if definition.key not in {"exact-source-binding", "nonempty-candidate-change"} or definition.parameters:
@@ -162,16 +165,34 @@ def main() -> int:
 
         def verify(self, criterion, context):
             candidate = context.candidate
-            algorithm = candidate.binding.snapshot.tree.algorithm
+            binding = candidate.binding
             if criterion.definition.key == "exact-source-binding":
                 checks = (
-                    ecacc.Check("baseline-tree-bound", context.baseline is not None and context.baseline.git_tree(algorithm) == candidate.binding.base_snapshot.tree),
-                    ecacc.Check("candidate-tree-bound", context.snapshot is not None and context.snapshot.git_tree(algorithm) == candidate.binding.snapshot.tree),
+                    ecacc.Check("exact-base-source-ref", binding.base_snapshot == self.expected_baseline),
+                    ecacc.Check(
+                        "same-repository",
+                        binding.snapshot.repository_id == self.expected_baseline.repository_id,
+                    ),
+                    ecacc.Check(
+                        "same-git-object-algorithm",
+                        binding.snapshot.tree.algorithm == self.expected_baseline.tree.algorithm,
+                    ),
+                    ecacc.Check("candidate-commit-bound", binding.snapshot.commit is not None),
                 )
             else:
-                checks = (ecacc.Check("nonempty-tree-delta", candidate.binding.snapshot.tree != candidate.binding.base_snapshot.tree),)
+                checks = (
+                    ecacc.Check(
+                        "nonempty-tree-delta",
+                        binding.snapshot.tree != binding.base_snapshot.tree,
+                    ),
+                )
             result = sc.CriterionResult.PASS if all(check.passed for check in checks) else sc.CriterionResult.FAIL
-            return ecacc.VerifierObservation(result, self.evidence_kind, checks, "Public handoff only; not task correctness")
+            return ecacc.VerifierObservation(
+                result,
+                self.evidence_kind,
+                checks,
+                "Canonical Git binding handoff only; official SWE-bench is task correctness authority",
+            )
 
     instruction_path = Path(required_env("AUTOBENCH_ADCP_INSTRUCTION_PATH"))
     result_path = Path(required_env("AUTOBENCH_ADCP_RESULT_PATH"))
@@ -216,7 +237,9 @@ def main() -> int:
         provenance=provenance,
     )
 
-    verifier = PublicHandoffVerifier()
+    git_workspace = GitWorkspace(workspace)
+    baseline_ref = git_workspace.source_ref(repository)
+    verifier = PublicHandoffVerifier(baseline_ref)
     registry = ecacc.VerifierRegistry((verifier,))
     intent = ecacc.TaskAcceptanceIntent(
         "autobench-public-handoff",
@@ -232,12 +255,26 @@ def main() -> int:
                     ecacc.Obligation(
                         ecacc.ObligationKind.PRESERVATION,
                         "Retain exact baseline/candidate source binding",
-                        (ecacc.CriterionDefinition("exact-source-binding", "Exact Git source identities remain bound", verifier.reference, ecacc.EvidenceKind.STRUCTURE),),
+                        (
+                            ecacc.CriterionDefinition(
+                                "exact-source-binding",
+                                "Canonical exact Git source identities remain bound",
+                                verifier.reference,
+                                ecacc.EvidenceKind.STRUCTURE,
+                            ),
+                        ),
                     ),
                     ecacc.Obligation(
                         ecacc.ObligationKind.ACHIEVEMENT,
                         "Produce a non-empty candidate tree change",
-                        (ecacc.CriterionDefinition("nonempty-candidate-change", "Candidate Git tree differs from baseline", verifier.reference, ecacc.EvidenceKind.STRUCTURE),),
+                        (
+                            ecacc.CriterionDefinition(
+                                "nonempty-candidate-change",
+                                "Candidate Git tree differs from baseline",
+                                verifier.reference,
+                                ecacc.EvidenceKind.STRUCTURE,
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -251,8 +288,6 @@ def main() -> int:
         versions.evaluation_contract_revision,
     )
 
-    git_workspace = GitWorkspace(workspace)
-    baseline_ref = git_workspace.source_ref(repository)
     request = DevelopmentWorkRequest(
         request_id=ids["request"],
         session_id=ids["session"],
