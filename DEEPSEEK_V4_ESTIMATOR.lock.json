@@ -60,6 +60,7 @@
     "paid_model_called": false
   },
   "live_provider_prompt_usage_parity": true,
+  "live_provider_prompt_usage_parity_semantics": "LEGACY_ADMISSION_FLAG_FOR_LIVE_USAGE_QUALIFICATION_NOT_EXACT_TOKEN_EQUALITY",
   "live_provider_prompt_usage_coverage": {
     "status": "PASS",
     "qualification_mode": "CONSERVATIVE_REFERENCE_ENVELOPE_V1",
@@ -73,6 +74,7 @@
     "reference_effort_prefix_tokens": 79,
     "provider_overhead_vs_lower_reference": 26,
     "reservation_headroom_tokens": 53,
+    "exact_match_to_lower_reference": false,
     "coverage_pass": true,
     "provider_usage_source_of_truth": true,
     "paid_paired_ab_started": false
