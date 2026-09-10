@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/phase3d-adcp-compatibility.yml"
       - "tools/phase3d_adcp_compatibility_preflight.py"
+      - "tools/phase3d_base_tree_contract_preflight.py"
       - "tests/coding/test_phase3d_adcp_compatibility_preflight.py"
       - "suites/coding/phase3d_scope.py"
       - "tests/coding/test_phase3d_scope.py"
@@ -22,6 +23,50 @@ env:
   ADCP_COMMIT: e49dc70bfc3552eb07bc55ed45824dbe118ab0eb
 
 jobs:
+  base-tree-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Exercise locked scope and exact Git preservation on all ten public base trees
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}
+        run: >-
+          python tools/phase3d_base_tree_contract_preflight.py
+          --output artifacts/phase3d/BASE_TREE_CONTRACT_PREFLIGHT.json
+      - name: Assert ten-base zero-paid contract evidence
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          value = json.loads(Path("artifacts/phase3d/BASE_TREE_CONTRACT_PREFLIGHT.json").read_text(encoding="utf-8"))
+          assert value["status"] == "PASS"
+          assert value["task_count"] == value["tasks_passed"] == 10
+          assert value["scope_max_visible_bytes"] == 524288
+          assert value["model_called"] is False
+          assert value["paid_model_called"] is False
+          assert value["official_grader_called"] is False
+          assert value["hidden_evaluation_material_used"] is False
+          assert all(row["status"] == "PASS" for row in value["results"])
+          assert all(row["selected_source_mode_100644_only"] for row in value["results"])
+          assert all(row["selected_source_utf8_only"] for row in value["results"])
+          assert all(row["scope_visible_bytes"] <= 524288 for row in value["results"])
+          assert all(row["untouched_entries_preserved"] for row in value["results"])
+          assert all(row["real_write_tree_match"] for row in value["results"])
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3d-ten-base-contract-${{ github.run_id }}
+          path: artifacts/phase3d/BASE_TREE_CONTRACT_PREFLIGHT.json
+          if-no-files-found: warn
+          retention-days: 30
+
   adcp-regression:
     strategy:
       fail-fast: false
@@ -85,7 +130,7 @@ jobs:
             .phase3d-adcp/packages/harness_bridge
 
   compatibility-preflight:
-    needs: adcp-regression
+    needs: [base-tree-contract, adcp-regression]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -123,15 +168,16 @@ jobs:
           tests/coding/test_phase3d_adcp_compatibility_preflight.py
           tests/core/test_adcp_paid_contract.py
           tests/core/test_phase3d_campaign_contract.py
-      - name: Exercise exact Git substrate on all ten locked SWE-bench base trees
+      - name: Exercise exact ADCP Git substrate on all ten locked SWE-bench base trees
         env:
           PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}
         run: >-
           python tools/phase3d_adcp_compatibility_preflight.py
           --adcp-root .phase3d-adcp
           --adcp-sha "$ADCP_COMMIT"
           --output artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json
-      - name: Assert zero-paid evidence
+      - name: Assert zero-paid ADCP evidence
         shell: python
         run: |
           import json
