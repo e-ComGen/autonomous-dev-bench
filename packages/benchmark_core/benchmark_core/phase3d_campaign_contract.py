@@ -8,8 +8,8 @@ from pathlib import Path
 from .identity import CanonicalModel, Sha256Digest
 
 
-EXPECTED_SCOPE_POLICY = "phase3d-public-static-python-scope-v1"
-EXPECTED_INTERNAL_EVALUATION_POLICY = "phase3d-public-handoff-nonempty-change-v1"
+EXPECTED_SCOPE_POLICY = "phase3d-public-static-python-scope-v2"
+EXPECTED_INTERNAL_EVALUATION_POLICY = "phase3d-public-handoff-canonical-binding-v2"
 EXPECTED_TASK_FAILURE_POLICY = "grade_empty_or_nonready_as_unresolved"
 EXPECTED_PROXY_AUTHORITY = "benchmark_core.paid_model_proxy_cli"
 EXPECTED_MAX_OUTPUT_TOKENS_PER_REQUEST = 16384
