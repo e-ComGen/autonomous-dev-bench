@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_PRODUCT_READINESS_HOST_QUALIFICATION",
+  "status": "PASS",
+  "qualified_benchmark_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+  "evidence_source": "USER_SUPPLIED_HOST_CONSOLE_TRANSCRIPT",
+  "raw_report_path": "/mnt/c/Users/Venya/AppData/Local/ecomgen-phase3d-product-readiness/autonomous-dev-bench/product-readiness-work/campaign/artifacts/PRODUCT_READINESS_FINAL.json",
+  "raw_report_digest_recorded": false,
+  "pins": {
+    "adcp": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+    "deepseek_harness": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
+    "harbor": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "swe_bench_tasks": "3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d"
+  },
+  "runtime_versions": {
+    "deepseek_harness_sdk": "0.1.2rc1",
+    "deepseek_harness_runtime": "0.1.2rc1",
+    "docker_engine": "29.8.0"
+  },
+  "checks": {
+    "pin_benchmark": "PASS",
+    "pin_adcp": "PASS",
+    "pin_deepseek_harness": "PASS",
+    "pin_harbor": "PASS",
+    "pin_swe_bench_tasks": "PASS",
+    "benchmark_full_pytest_and_build": "PASS",
+    "phase3d_exact_plan_schedule_replay": "PASS",
+    "adcp_real_runtime_fail_repair_pass": "PASS",
+    "adcp_shipping_dsh_http_sse_binding": "PASS",
+    "docker_engine": "PASS",
+    "stock_real_harbor_trial": "PASS",
+    "adcp_real_harbor_process_boundary": "PASS",
+    "harbor_contracts": "PASS",
+    "benchmark_source_postcheck_clean": "PASS",
+    "deepseek_live_usage_coverage": "PASS",
+    "local_paid_preflight": "PASS"
+  },
+  "deepseek_live_usage": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoning_effort": "high",
+    "provider_prompt_tokens": 37,
+    "lower_reference_input_tokens": 11,
+    "reference_reservation_input_tokens": 90,
+    "reference_effort_prefix_tokens": 79,
+    "reservation_headroom_tokens": 53,
+    "provider_overhead_vs_lower_reference": 26,
+    "coverage_pass": true,
+    "exact_match_to_lower_reference": false,
+    "provider_usage_source_of_truth": true
+  },
+  "experiment_design": {
+    "selected_scenario_id": "mde-15pp-conservative-discordance",
+    "task_count": 10,
+    "repeat_count_per_task": 37,
+    "pair_count": 370,
+    "total_arm_runs": 740,
+    "schedule_identity": "sha256:05c43a35e67f2f2b1a00346785ded3c5e3ff51370f2bda952340c490470b298b",
+    "candidate_plan_digest": "sha256:68e521552a1e14ce6d91d1d5fa4bb8e76033d0cc426ed5a4a9ef5e56ea4c0630",
+    "outcome_data_used": false
+  },
+  "paid_admission": {
+    "status": "PASS",
+    "paid_ready": true,
+    "paid_paired_ab_started": false,
+    "winner": "UNKNOWN"
+  }
+}
