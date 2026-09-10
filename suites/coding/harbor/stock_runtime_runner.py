@@ -12,6 +12,9 @@ from deepseek_harness import DeepSeekHarness
 from deepseek_harness_runtime import bundled_runtime_path
 
 
+REASONING_EFFORT = "high"
+
+
 def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value is None or not value.strip():
@@ -46,6 +49,7 @@ def main() -> int:
     with DeepSeekHarness(
         provider=provider,
         model=model,
+        reasoning_effort=REASONING_EFFORT,
         cwd=str(workspace),
         dsh_home=str(dsh_home),
         profile=profile,
@@ -68,6 +72,7 @@ def main() -> int:
         "profile": profile,
         "provider": provider,
         "model": model,
+        "reasoning_effort": REASONING_EFFORT,
         "session_id": result.session_id,
         "finish_reason": result.finish_reason,
         "final_response": result.final_response,
