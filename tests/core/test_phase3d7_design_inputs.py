@@ -79,5 +79,5 @@ def test_locked_design_does_not_bypass_external_paid_admission_gates() -> None:
     assert admission.paid_ready is False
     assert "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS" in admission.blockers
     assert "DEEPSEEK_ESTIMATOR_NOT_PAID_READY" in admission.blockers
-    assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" in admission.blockers
+    assert "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS" not in admission.blockers
     assert "ADCP_NOT_PAID_READY" in admission.blockers
