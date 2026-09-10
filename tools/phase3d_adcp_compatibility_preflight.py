@@ -86,6 +86,10 @@ def ensure_repository(cache_root: Path, repository: str, commit: str) -> Path:
         )
         if result.returncode:
             raise RuntimeError(result.stderr.decode("utf-8", "replace")[-4000:])
+    # ADCP deliberately evaluates worktree cleanliness with core.autocrlf=false.
+    # Pin the same policy BEFORE materializing any disposable source worktree so
+    # a Windows/global autocrlf setting cannot manufacture CRLF-only dirtiness.
+    git(bare, "config", "core.autocrlf", "false")
     fetch = subprocess.run(
         ["git", "-C", str(bare), "fetch", "--no-tags", "origin", commit],
         stdout=subprocess.PIPE,
@@ -141,6 +145,9 @@ def configure_adcp_imports(adcp_root: Path, expected_sha: str):
 
 def prepare_worktree(bare: Path, destination: Path, task_id: str, base_commit: str) -> None:
     branch = "autobench-preflight-" + hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:20]
+    # Reassert the checkout policy here as well because callers/tests may supply
+    # an already-existing bare repository without going through ensure_repository.
+    git(bare, "config", "core.autocrlf", "false")
     subprocess.run(
         ["git", "-C", str(bare), "branch", "-D", branch],
         stdout=subprocess.PIPE,
@@ -157,6 +164,12 @@ def prepare_worktree(bare: Path, destination: Path, task_id: str, base_commit: s
     if result.returncode:
         raise RuntimeError(result.stderr.decode("utf-8", "replace")[-4000:])
     require_exact_head(destination, base_commit, task_id)
+    status = git(destination, "-c", "core.autocrlf=false", "status", "--porcelain", "--untracked-files=all").stdout
+    if status:
+        raise ValueError(
+            "disposable source worktree is dirty immediately after exact checkout; "
+            "refusing to attribute host line-ending drift to ADCP"
+        )
 
 
 def remove_worktree(bare: Path, destination: Path) -> None:
@@ -288,70 +301,64 @@ def exercise_task(
         remove_worktree(bare, worktree)
 
 
-def main() -> int:
+def load_task_instruction(task_repo: Path, task_id: str, repository: str, base_commit: str) -> str:
+    validate_task_metadata(task_repo, task_id, repository, base_commit)
+    return read_public_task_file(task_repo, task_id, "problem_statement.md")
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--adcp-root", type=Path, required=True)
     parser.add_argument("--adcp-sha", required=True)
-    parser.add_argument("--cache-root", type=Path, default=Path(".autobench-cache/phase3d-compat"))
-    parser.add_argument("--output", type=Path, default=Path("artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json"))
-    args = parser.parse_args()
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
 
-    if _SHA1.fullmatch(args.adcp_sha) is None:
-        raise SystemExit("--adcp-sha must be an exact lowercase SHA-1")
     adcp_root = args.adcp_root.resolve()
+    if not _SHA1.fullmatch(args.adcp_sha):
+        raise ValueError("--adcp-sha must be an exact SHA-1 commit")
     sc, FileEdit, GitWorkspace = configure_adcp_imports(adcp_root, args.adcp_sha)
 
-    cache_root = args.cache_root.resolve()
-    cache_root.mkdir(parents=True, exist_ok=True)
-    task_repo = ensure_repository(cache_root, TASK_REPOSITORY, TASK_REPOSITORY_COMMIT)
-
-    results = []
-    with tempfile.TemporaryDirectory(prefix="autobench-phase3d-compat-") as temp_name:
-        temp_root = Path(temp_name)
-        for index, (task_id, expected) in enumerate(TASKS.items(), start=1):
-            repository, base_commit = expected
+    with tempfile.TemporaryDirectory(prefix="phase3d-adcp-preflight-") as temp:
+        root = Path(temp)
+        cache = root / "cache"
+        task_repo = ensure_repository(cache, TASK_REPOSITORY, TASK_REPOSITORY_COMMIT)
+        results = []
+        for index, (task_id, (repository, base_commit)) in enumerate(TASKS.items(), start=1):
             validate_task_metadata(task_repo, task_id, repository, base_commit)
             instruction = read_public_task_file(task_repo, task_id, "problem_statement.md")
-            source_repo = ensure_repository(cache_root, repository, base_commit)
+            bare = ensure_repository(cache, repository, base_commit)
             result = exercise_task(
                 task_id=task_id,
                 repository=repository,
                 base_commit=base_commit,
                 instruction=instruction,
-                bare=source_repo,
-                worktree=temp_root / f"task-{index:02d}",
+                bare=bare,
+                worktree=root / f"worktree-{index:02d}",
                 sc=sc,
                 FileEdit=FileEdit,
                 GitWorkspace=GitWorkspace,
             )
             results.append(result)
-            print(f"[{index:02d}/10] {task_id}: PASS")
+            print(f"[{index:02d}/10] {task_id}: PASS ({result['scope_visible_bytes']} visible bytes)")
 
-    if len(results) != 10 or {item["task_id"] for item in results} != set(TASKS):
-        raise ValueError("preflight did not cover the exact locked ten-task corpus")
-    evidence = {
-        "schema_version": 1,
-        "scope": "PHASE3D_ADCP_ZERO_PAID_COMPATIBILITY_PREFLIGHT",
+    payload = {
+        "schema": "phase3d-adcp-compatibility-preflight/1",
         "status": "PASS",
         "adcp_commit": args.adcp_sha,
-        "swebench_task_repository": TASK_REPOSITORY,
-        "swebench_task_repository_commit": TASK_REPOSITORY_COMMIT,
-        "task_count": 10,
-        "tasks_passed": 10,
+        "task_repository": TASK_REPOSITORY,
+        "task_repository_commit": TASK_REPOSITORY_COMMIT,
+        "task_count": len(results),
+        "tasks_passed": sum(item["status"] == "PASS" for item in results),
         "scope_policy": SCOPE_POLICY,
+        "scope_max_visible_bytes": MAX_SCOPE_BYTES,
         "model_called": False,
         "paid_model_called": False,
         "official_grader_called": False,
         "hidden_evaluation_material_used": False,
-        "task_input_files_read": sorted(_ALLOWED_TASK_FILES),
-        "forbidden_task_material": sorted(_FORBIDDEN_TASK_NAMES),
         "results": results,
     }
-    canonical = json.dumps(evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    evidence["evidence_sha256"] = hashlib.sha256(canonical).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"ADCP compatibility preflight: 10/10 PASS; evidence={args.output}")
+    args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return 0
 
 
