@@ -2,7 +2,7 @@
   "schema_version": 1,
   "role": "orchestrated_arm_private_runtime_identity",
   "repository": "e-ComGen/autonomous-dev-control-plane",
-  "commit": "285702063815280398b95ba8696566259c8b5b34",
+  "commit": "95c07df4a6dfe2c6cda6de28e2039c370a989fc0",
   "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
   "integration": "existing-v2-runtime-role-ports",
   "model_route": "deepseek-v4-flash",
@@ -21,6 +21,13 @@
     "model_calls_via_shared_budget_proxy": true,
     "upstream_provider_credential_visible_to_arm": false
   },
+  "benchmark_substrate_amendment": {
+    "outcome_blind": true,
+    "paid_pairs_completed_before_amendment": 0,
+    "parent_treatment_commit": "285702063815280398b95ba8696566259c8b5b34",
+    "reason": "Exact real-repository Git tree compatibility: preserve executable/symlink/binary blobs and bounded compressed role-source transport without changing ADCP authority semantics.",
+    "hidden_task_outcomes_used": false
+  },
   "fake_process_boundary_status": "PASS",
   "fake_process_boundary": {
     "workflow_run_id": 34348981516,
@@ -37,6 +44,6 @@
     "production_ready": false
   },
   "private_pinned_runtime_qualification_status": "NOT_RUN",
-  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED",
+  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_REQUALIFICATION_REQUIRED",
   "paid_ready": false
 }
