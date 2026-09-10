@@ -95,14 +95,14 @@ def _tokens(instruction: str) -> tuple[tuple[str, int], ...]:
 
 
 def _inventory(repo: str, baseline: str) -> dict[str, int]:
-    output = _git(repo, "ls-tree", "-rzl", baseline).decode("utf-8", "strict")
+    output = _git(repo, "ls-tree", "-rzl", "-r", baseline).decode("utf-8", "strict")
     result: dict[str, int] = {}
     for row in output.split("\0"):
         if not row:
             continue
         metadata, path = row.split("\t", 1)
         mode, kind, _oid, size = metadata.split()
-        if mode not in {"100644", "100755"} or kind != "blob" or not path.endswith(".py") or _is_test_path(path):
+        if mode != "100644" or kind != "blob" or not path.endswith(".py") or _is_test_path(path):
             continue
         try:
             byte_size = int(size)
