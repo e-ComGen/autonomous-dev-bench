@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_PRODUCT_READINESS_HOST_QUALIFICATION",
+  "status": "PASS",
+  "product_ready": true,
+  "qualification_date": "2026-09-10",
+  "evidence_source": "user_host_product_readiness_transcript",
+  "benchmark_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+  "pins": {
+    "adcp": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+    "deepseek_harness": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
+    "harbor": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "swe_bench_tasks": "3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d"
+  },
+  "deepseek_harness_runtime": {
+    "sdk_version": "0.1.2rc1",
+    "runtime_version": "0.1.2rc1"
+  },
+  "deepseek_live_usage_qualification": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoning_effort": "high",
+    "max_tokens": 8,
+    "provider_prompt_tokens": 37,
+    "lower_reference_input_tokens": 11,
+    "reference_reservation_input_tokens": 90,
+    "reference_effort_prefix_tokens": 79,
+    "provider_overhead_vs_lower_reference": 26,
+    "reservation_headroom_tokens": 53,
+    "coverage_pass": true,
+    "request_policy_matches": true,
+    "provider_above_lower_reference": true,
+    "reference_envelope_non_underestimate": true,
+    "effort_prefix_structure_ok": true,
+    "provider_usage_source_of_truth": true
+  },
+  "checks": {
+    "benchmark_core_full_pytest_and_build": "PASS",
+    "phase3d_exact_370_pair_plan_schedule_replay": "PASS",
+    "adcp_real_runtime_fail_repair_pass": "PASS",
+    "adcp_shipping_dsh_http_sse_binding": "PASS",
+    "docker_engine_29_8_0": "PASS",
+    "stock_real_harbor_trial": "PASS",
+    "adcp_real_harbor_process_boundary": "PASS",
+    "harbor_receipt_workspace_cas_contracts": "PASS",
+    "benchmark_source_postcheck_clean": "PASS",
+    "deepseek_live_usage_coverage": "PASS",
+    "local_paid_preflight": "PASS"
+  },
+  "scientific_state": {
+    "pair_count": 370,
+    "task_count": 10,
+    "repeat_count_per_task": 37,
+    "total_arm_runs": 740,
+    "schedule_identity": "sha256:05c43a35e67f2f2b1a00346785ded3c5e3ff51370f2bda952340c490470b298b",
+    "outcome_data_used": false,
+    "paid_paired_ab_started": false,
+    "completed_pairs": 0,
+    "winner": "UNKNOWN"
+  },
+  "credential_recorded": false,
+  "official_grader_called": false
+}
