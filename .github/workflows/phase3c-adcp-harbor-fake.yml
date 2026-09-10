@@ -7,6 +7,7 @@ on:
       - "suites/coding/harbor/workspace.py"
       - "suites/coding/harbor/cas_export.py"
       - "tools/verify_phase3c_adcp_fake_harbor.py"
+      - "tests/harbor_phase3c_adcp_fake/**"
       - "tests/core/test_adcp_harbor_contract.py"
       - "tests/coding/test_harbor_workspace.py"
       - "tests/coding/test_harbor_cas_export.py"
@@ -60,6 +61,15 @@ jobs:
           set -euo pipefail
           python -m pip install -e '.[dev]'
           python -m pip install -e .phase3c-harbor
+      - name: Prepare isolated absolute fake task path
+        shell: bash
+        run: |
+          set -euo pipefail
+          TASK="$RUNNER_TEMP/phase3c-adcp-fake-task"
+          rm -rf "$TASK"
+          cp -a tests/harbor_phase3c_adcp_fake "$TASK"
+          test -f "$TASK/task.toml"
+          echo "PHASE3C_FAKE_TASK=$TASK" >> "$GITHUB_ENV"
       - name: Run fake ADCP Harbor process boundary
         env:
           AUTOBENCH_ADCP_FAKE_RUNTIME: "1"
@@ -68,10 +78,10 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf artifacts/phase3c-adcp
-          harbor trials start -p scenarios/phase3c/adcp_fake_harbor \
+          harbor trials start -p "$PHASE3C_FAKE_TASK" \
             --agent suites.coding.harbor.adcp_agent:ADCPHarborAgent \
             --trial-name phase3c-adcp-fake \
-            --trials-dir artifacts/phase3c-adcp/trials
+            --trials-dir "$GITHUB_WORKSPACE/artifacts/phase3c-adcp/trials"
 
       - name: Validate Harbor patch and ADCP process receipt independently
         run: >-
