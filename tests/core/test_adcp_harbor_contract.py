@@ -45,15 +45,8 @@ def _receipt(**overrides):
             "verifier": 2,
         },
         "event_sequence": [
-            "ARCHITECT",
-            "CODER",
-            "REVIEWER",
-            "VERIFIER",
-            "BADC_REPAIR",
-            "CODER",
-            "REVIEWER",
-            "VERIFIER",
-            "CANDIDATE_READY",
+            "ARCHITECT", "CODER", "REVIEWER", "VERIFIER", "BADC_REPAIR",
+            "CODER", "REVIEWER", "VERIFIER", "CANDIDATE_READY",
         ],
         "outcome_status": "CANDIDATE_READY",
         "candidate_ready": True,
@@ -90,12 +83,7 @@ def test_adcp_lock_matches_public_contract_and_stays_not_paid_ready() -> None:
 
 
 def test_fake_qualification_receipt_accepts_explicit_bounded_repair_cycle() -> None:
-    parsed = parse_adcp_runner_receipt(
-        _receipt(),
-        allow_fake_runtime=True,
-        require_repair_cycle=True,
-    )
-
+    parsed = parse_adcp_runner_receipt(_receipt(), allow_fake_runtime=True, require_repair_cycle=True)
     assert parsed.fake_runtime
     assert not parsed.runtime_loaded
     assert parsed.repair_count == 1
@@ -115,6 +103,50 @@ def test_production_receipt_requires_real_pinned_runtime_loaded() -> None:
     parsed = parse_adcp_runner_receipt(receipt)
     assert parsed.runtime_loaded
     assert not parsed.fake_runtime
+
+
+def test_paid_scientific_run_accepts_valid_nonready_terminal_as_outcome() -> None:
+    receipt = _receipt(
+        fake_runtime=False,
+        runtime_loaded=True,
+        repair_count=0,
+        outcome_status="BUDGET_EXHAUSTED",
+        candidate_ready=False,
+        candidate_snapshot_id="none",
+        model_called=True,
+    )
+    receipt["role_call_counts"] = {"architect": 1, "coder": 1, "reviewer": 0, "verifier": 0}
+    receipt["event_sequence"] = ["ARCHITECT", "CODER"]
+    parsed = parse_adcp_runner_receipt(receipt, allow_nonready_terminal=True)
+    assert parsed.outcome_status == "BUDGET_EXHAUSTED"
+    assert not parsed.candidate_ready
+    assert parsed.model_called
+
+
+def test_nonready_terminal_remains_rejected_by_strict_qualification() -> None:
+    receipt = _receipt(
+        fake_runtime=False,
+        runtime_loaded=True,
+        outcome_status="FAILED_BOUNDED",
+        candidate_ready=False,
+        candidate_snapshot_id="none",
+    )
+    with pytest.raises(ADCPReceiptError, match="qualification requires CANDIDATE_READY"):
+        parse_adcp_runner_receipt(receipt)
+
+
+def test_paid_scientific_run_rejects_unknown_or_inconsistent_terminal() -> None:
+    base = _receipt(fake_runtime=False, runtime_loaded=True, model_called=True)
+    with pytest.raises(ADCPReceiptError, match="non-terminal/unknown"):
+        parse_adcp_runner_receipt(
+            dict(base, outcome_status="MYSTERY", candidate_ready=False),
+            allow_nonready_terminal=True,
+        )
+    with pytest.raises(ADCPReceiptError, match="candidate_ready disagrees"):
+        parse_adcp_runner_receipt(
+            dict(base, outcome_status="FAILED_BOUNDED", candidate_ready=True),
+            allow_nonready_terminal=True,
+        )
 
 
 def test_private_runtime_pin_mismatch_fails_closed() -> None:
@@ -138,17 +170,11 @@ def test_candidate_ready_never_equals_task_completed() -> None:
 
 def test_budget_proxy_and_upstream_credential_boundary_is_hard() -> None:
     with pytest.raises(ADCPReceiptError, match="budget proxy"):
-        parse_adcp_runner_receipt(
-            _receipt(model_calls_via_budget_proxy=False), allow_fake_runtime=True
-        )
+        parse_adcp_runner_receipt(_receipt(model_calls_via_budget_proxy=False), allow_fake_runtime=True)
     with pytest.raises(ADCPReceiptError, match="upstream provider credential"):
-        parse_adcp_runner_receipt(
-            _receipt(upstream_provider_credential_present=True), allow_fake_runtime=True
-        )
+        parse_adcp_runner_receipt(_receipt(upstream_provider_credential_present=True), allow_fake_runtime=True)
     with pytest.raises(ADCPReceiptError, match="proxy credential"):
-        parse_adcp_runner_receipt(
-            _receipt(proxy_credential_present=False), allow_fake_runtime=True
-        )
+        parse_adcp_runner_receipt(_receipt(proxy_credential_present=False), allow_fake_runtime=True)
 
 
 def test_fake_qualification_cannot_claim_model_call() -> None:
@@ -160,11 +186,7 @@ def test_repair_qualification_requires_second_coder_reviewer_verifier_cycle() ->
     receipt = _receipt()
     receipt["event_sequence"] = ["ARCHITECT", "CODER", "REVIEWER", "VERIFIER", "CANDIDATE_READY"]
     with pytest.raises(ADCPReceiptError, match="subsequence"):
-        parse_adcp_runner_receipt(
-            receipt,
-            allow_fake_runtime=True,
-            require_repair_cycle=True,
-        )
+        parse_adcp_runner_receipt(receipt, allow_fake_runtime=True, require_repair_cycle=True)
 
 
 def test_unknown_receipt_fields_are_rejected() -> None:
