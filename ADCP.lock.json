@@ -2,8 +2,8 @@
   "schema_version": 1,
   "role": "orchestrated_arm_private_runtime_identity",
   "repository": "e-ComGen/autonomous-dev-control-plane",
-  "commit": "285702063815280398b95ba8696566259c8b5b34",
-  "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
+  "commit": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+  "runtime": "packages.zone_development.ZoneDevelopmentRuntime",
   "integration": "existing-v2-runtime-role-ports",
   "model_route": "deepseek-v4-flash",
   "provider_route": "deepseek-official",
@@ -36,7 +36,7 @@
     "private_runtime_loaded": false,
     "production_ready": false
   },
-  "private_pinned_runtime_qualification_status": "NOT_RUN",
-  "production_blocker": "PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED",
+  "private_pinned_runtime_qualification_status": "PASS",
+  "production_blocker": "POST_REPIN_PRODUCT_READINESS_REQUIRED",
   "paid_ready": false
 }
