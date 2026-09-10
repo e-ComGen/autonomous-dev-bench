@@ -8,7 +8,7 @@ rem The only optional paid action is one official DeepSeek parity call with max_
 
 set "BENCH_REPO=https://github.com/e-ComGen/autonomous-dev-bench.git"
 set "BENCH_BRANCH=feat/phase3d-paid-campaign"
-set "BENCH_COMMIT=79beb44b99f6a4bb5daf3daab2b9c28ccb86b41d"
+set "BENCH_COMMIT=b9f966bb48f10e904ae0086b48326875d6c634fc"
 set "ADCP_COMMIT=e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13"
 set "WORK_ROOT=%LOCALAPPDATA%\ecomgen-phase3d-product-readiness"
 set "BENCH_DIR=%WORK_ROOT%\autonomous-dev-bench"
