@@ -110,11 +110,13 @@ class ADCPHarborAgent(BaseAgent):
             raw,
             allow_fake_runtime=fake_runtime,
             require_repair_cycle=fake_runtime,
+            allow_nonready_terminal=not fake_runtime,
         )
 
         patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
-        if not patch.strip():
-            raise ValueError("ADCP runner reached CANDIDATE_READY without an observable workspace patch")
+        # Empty or partial output is a scientific failure, not infrastructure.
+        # Official SWE-bench is the only authority that converts this patch into
+        # RESOLVED/UNRESOLVED.
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
 
@@ -155,6 +157,7 @@ class ADCPHarborAgent(BaseAgent):
                 "max_tokens_per_request": 16384,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
+                "empty_patch": not patch.strip(),
                 "budget_proxy": usage,
             }
         }
@@ -178,7 +181,6 @@ class ADCPHarborAgent(BaseAgent):
                 "cost_usd": 0.0,
                 "accounting_unknown": False,
             }
-
         url = os.environ.get("AUTOBENCH_MODEL_PROXY_USAGE_URL")
         if not url:
             raise ValueError("model-calling ADCP run requires AUTOBENCH_MODEL_PROXY_USAGE_URL")
