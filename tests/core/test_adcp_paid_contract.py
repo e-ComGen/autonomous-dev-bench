@@ -5,11 +5,13 @@ import pytest
 from suites.coding.adcp_contract import (
     ADCP_COMMIT,
     ADCP_INTEGRATION,
+    ADCP_INTERNAL_EVALUATION_POLICY,
     ADCP_MODEL_ROUTE,
     ADCP_PAID_RECEIPT_SCHEMA,
     ADCP_PROVIDER_ROUTE,
     ADCP_REPOSITORY,
     ADCP_RUNTIME,
+    ADCP_SCOPE_POLICY,
     ADCPReceiptError,
     parse_adcp_paid_runner_receipt,
 )
@@ -42,10 +44,10 @@ def receipt(**overrides):
         "request_id": "paid-request",
         "candidate_snapshot_id": "candidate-1",
         "repair_count": 0,
-        "scope_policy": "phase3d-public-static-python-scope-v1",
+        "scope_policy": ADCP_SCOPE_POLICY,
         "scope_digest": "sha256:" + "a" * 64,
         "write_scope_paths": ["package/source.py"],
-        "internal_evaluation_policy": "phase3d-public-handoff-nonempty-change-v1",
+        "internal_evaluation_policy": ADCP_INTERNAL_EVALUATION_POLICY,
     }
     value.update(overrides)
     return value
@@ -83,6 +85,12 @@ def test_paid_receipt_never_accepts_task_completion_authority():
 def test_paid_receipt_binds_scope_and_rejects_unknown_fields():
     with pytest.raises(ADCPReceiptError, match="scope_digest"):
         parse_adcp_paid_runner_receipt(receipt(scope_digest="not-a-digest"))
+    with pytest.raises(ADCPReceiptError, match="write-scope policy"):
+        parse_adcp_paid_runner_receipt(receipt(scope_policy="phase3d-public-static-python-scope-v1"))
+    with pytest.raises(ADCPReceiptError, match="internal handoff policy"):
+        parse_adcp_paid_runner_receipt(
+            receipt(internal_evaluation_policy="phase3d-public-handoff-nonempty-change-v1")
+        )
     raw = receipt()
     raw["hidden_answer"] = True
     with pytest.raises(ADCPReceiptError, match="fields mismatch"):
