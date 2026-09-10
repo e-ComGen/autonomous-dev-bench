@@ -24,9 +24,13 @@ def test_estimator_lock_matches_runtime_identity_and_recorded_live_coverage() ->
     assert lock["network_policy"]["paid_trial_default_local_only"] is True
     assert lock["provider_usage_source_of_truth"] is True
     assert lock["live_provider_prompt_usage_parity"] is True
+    assert lock["live_provider_prompt_usage_parity_semantics"] == (
+        "LEGACY_ADMISSION_FLAG_FOR_LIVE_USAGE_QUALIFICATION_NOT_EXACT_TOKEN_EQUALITY"
+    )
     coverage = lock["live_provider_prompt_usage_coverage"]
     assert coverage["status"] == "PASS"
     assert coverage["coverage_pass"] is True
+    assert coverage["exact_match_to_lower_reference"] is False
     assert coverage["provider_prompt_tokens"] == 37
     assert coverage["lower_reference_input_tokens"] == 11
     assert coverage["reference_envelope_input_tokens"] == 90
