@@ -102,6 +102,9 @@ def verify_capture(capture: dict[str, object], cache_dir: Path) -> dict[str, obj
     return {
         "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
         "status": "PASS" if passed else "FAIL",
+        # Backward-compatible field: this is now explicitly the provider-accounted
+        # estimate, while the conservative reservation is reported separately.
+        "estimated_input_tokens": provider_accounted.input_tokens,
         "provider_accounted_input_tokens": provider_accounted.input_tokens,
         "reference_envelope_input_tokens": reference.input_tokens,
         "provider_prompt_tokens": prompt_tokens,
