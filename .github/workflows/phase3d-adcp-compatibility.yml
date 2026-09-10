@@ -112,7 +112,7 @@ jobs:
       - name: Run affected ADCP conformance and recovery suites
         env:
           PYTHONHASHSEED: "0"
-          PYTHONPATH: ${{ github.workspace }}/.phase3d-adcp:${{ github.workspace }}/.phase3d-adcp/packages/shared_contracts/src
+          PYTHONPATH: ${{ github.workspace }}/.phase3d-adcp:${{ github.workspace }}/.phase3d-adcp/packages/shared_contracts/src:${{ github.workspace }}/.phase3d-adcp/tests
         run: |
           set -euo pipefail
           python -m pytest -q .phase3d-adcp/packages/shared_contracts/tests
