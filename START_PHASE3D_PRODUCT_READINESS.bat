@@ -4,11 +4,13 @@ chcp 65001 >nul
 title Phase 3D PRODUCT READINESS bootstrap
 
 rem Safe product-readiness bootstrap. It never starts the 370-pair paid A/B campaign.
-rem The only optional paid action is one official DeepSeek parity call with max_tokens=8.
+rem A prior exact provider capture is reused when its identity matches. If no
+rem reusable capture exists and an API key is configured, readiness may make at
+rem most one max_tokens=8 qualification call automatically.
 
 set "BENCH_REPO=https://github.com/e-ComGen/autonomous-dev-bench.git"
 set "BENCH_BRANCH=feat/phase3d-paid-campaign"
-set "BENCH_COMMIT=b9f966bb48f10e904ae0086b48326875d6c634fc"
+set "BENCH_COMMIT=7d865382446b2331641b582b8f5b9eaeceaed827"
 set "ADCP_COMMIT=e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13"
 set "WORK_ROOT=%LOCALAPPDATA%\ecomgen-phase3d-product-readiness"
 set "BENCH_DIR=%WORK_ROOT%\autonomous-dev-bench"
@@ -22,6 +24,7 @@ echo Phase 3D PRODUCT READINESS bootstrap
 echo Benchmark checkpoint: %BENCH_COMMIT%
 echo ADCP merged pin: %ADCP_COMMIT%
 echo.
+echo NO Y/N prompts.
 echo This launcher NEVER starts the 370-pair paid A/B campaign.
 echo ================================================================================
 echo.
@@ -40,34 +43,25 @@ git -C "%BENCH_DIR%" fetch --no-tags origin "%BENCH_BRANCH%" || goto :failed
 git -C "%BENCH_DIR%" cat-file -e "%BENCH_COMMIT%^{commit}" || goto :wrong_bench
 git -C "%BENCH_DIR%" checkout --detach --force "%BENCH_COMMIT%" || goto :failed
 git -C "%BENCH_DIR%" reset --hard "%BENCH_COMMIT%" || goto :failed
-git -C "%BENCH_DIR%" clean -ffd || goto :failed
+
+rem Preserve product-readiness-work because it can contain the exact raw provider
+rem capture. The capture helper reuses it only after strict identity validation.
+git -C "%BENCH_DIR%" clean -ffd -e product-readiness-work/ || goto :failed
 
 set "OBSERVED_BENCH="
 for /f "delims=" %%H in ('git -C "%BENCH_DIR%" rev-parse --verify HEAD') do set "OBSERVED_BENCH=%%H"
 if /I not "%OBSERVED_BENCH%"=="%BENCH_COMMIT%" goto :wrong_bench
 
 echo.
-echo Optional live gate:
-echo   PRODUCT READY can include ONE official DeepSeek prompt-usage parity call.
-echo   max_tokens=8; this is NOT a benchmark pair and NOT the 370-pair campaign.
-echo   It may consume a tiny amount of paid API usage if a key is configured.
+echo [bootstrap] Preparing exact sparse DeepSeek Harness pin for Windows...
+call "%BENCH_DIR%\prepare_product_readiness_dsh_windows.bat"
+if errorlevel 1 goto :failed
+
 echo.
-choice /C YN /N /M "Authorize that one live DeepSeek parity call if an API key is available? [Y/N]: "
-if errorlevel 2 goto :no_live_call
-
-echo [consent] One max_tokens=8 live DeepSeek parity call AUTHORIZED.
-if not defined AUTOBENCH_DEEPSEEK_API_KEY if defined DEEPSEEK_API_KEY set "AUTOBENCH_DEEPSEEK_API_KEY=%DEEPSEEK_API_KEY%"
-goto :run_readiness
-
-:no_live_call
-echo [consent] Live DeepSeek parity call NOT authorized.
-set "AUTOBENCH_DEEPSEEK_API_KEY="
-
-:run_readiness
-echo.
-echo [bootstrap] Starting exact product-readiness campaign...
-call "%BENCH_DIR%\product_readiness.bat"
+echo [bootstrap] Starting readiness with persistent WSL/Docker substrate...
+call "%BENCH_DIR%\run_product_readiness_windows_resilient.bat"
 set "RC=%ERRORLEVEL%"
+echo The 370-pair paid A/B campaign was NOT started by this launcher.
 exit /b %RC%
 
 :wrong_bench
