@@ -38,12 +38,7 @@ class StockDeepSeekAgent(BaseAgent):
         if not await environment.is_file(self.RUNNER_PATH):
             raise FileNotFoundError(f"stock DeepSeek runner missing from task image: {self.RUNNER_PATH}")
 
-    async def run(
-        self,
-        instruction: str,
-        environment: BaseEnvironment,
-        context: AgentContext,
-    ) -> None:
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         base_url = os.environ.get("AUTOBENCH_DEEPSEEK_BASE_URL")
         api_key = os.environ.get("AUTOBENCH_DEEPSEEK_API_KEY")
         if not base_url or not api_key:
@@ -55,6 +50,8 @@ class StockDeepSeekAgent(BaseAgent):
 
         workspace = HarborWorkspaceFacade(environment)
         baseline_commit = await workspace.repository_head()
+        await workspace.require_clean_tracked_baseline()
+        baseline_untracked = await workspace.untracked_paths()
         runner_env = {
             "DEEPSEEK_BASE_URL": base_url,
             "DEEPSEEK_API_KEY": api_key,
@@ -65,6 +62,7 @@ class StockDeepSeekAgent(BaseAgent):
             "AUTOBENCH_DSH_PROVIDER": "deepseek-official",
             "AUTOBENCH_DSH_MODEL": self.model_name,
             "AUTOBENCH_DSH_SESSION_ID": f"harbor-{self.logs_dir.parent.name}",
+            "AUTOBENCH_DSH_MAX_TOKENS": "16384",
         }
         usage_url = os.environ.get("AUTOBENCH_DEEPSEEK_USAGE_URL")
         if usage_url:
@@ -76,7 +74,7 @@ class StockDeepSeekAgent(BaseAgent):
             f"python {self.RUNNER_PATH}",
             cwd=workspace.repository_root,
             env=runner_env,
-            timeout_sec=120,
+            timeout_sec=600,
         )
         if execution.return_code != 0:
             stderr = (execution.stderr or execution.stdout or "")[-4000:]
@@ -92,7 +90,7 @@ class StockDeepSeekAgent(BaseAgent):
         if result.get("model") != self.model_name:
             raise ValueError("stock DeepSeek model identity changed")
 
-        patch = await workspace.git_diff()
+        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
         if not patch.strip():
             raise ValueError("stock DeepSeek Harness produced no repository patch")
         patch_path = self.logs_dir / "PATCH.diff"
@@ -121,6 +119,7 @@ class StockDeepSeekAgent(BaseAgent):
                 "final_response": result.get("final_response"),
                 "event_count": result.get("event_count"),
                 "fake_model": result.get("fake_model") is True,
+                "max_tokens_per_request": 16384,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
             }
