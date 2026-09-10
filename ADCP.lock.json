@@ -37,6 +37,15 @@
     "production_ready": false
   },
   "private_pinned_runtime_qualification_status": "PASS",
-  "production_blocker": "POST_REPIN_PRODUCT_READINESS_REQUIRED",
-  "paid_ready": false
+  "host_product_readiness": {
+    "status": "PASS",
+    "qualified_benchmark_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+    "qualification_record": "qualification/PHASE3D_PRODUCT_READINESS_HOST_20260910.json",
+    "runtime_loaded": true,
+    "real_deepseek_harness_subprocess": true,
+    "real_harbor_process_boundary": true,
+    "paid_model_campaign_started": false
+  },
+  "production_blocker": null,
+  "paid_ready": true
 }
