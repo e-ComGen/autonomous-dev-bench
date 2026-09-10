@@ -17,7 +17,7 @@ set "DSH_URL=https://github.com/deepseek-ai/deepseek-harness.git"
 set "HARBOR_URL=https://github.com/harbor-framework/harbor.git"
 set "TASKS_URL=https://github.com/SWE-bench/swe-bench-tasks.git"
 
-set "ADCP_SHA=285702063815280398b95ba8696566259c8b5b34"
+set "ADCP_SHA=e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13"
 set "DSH_SHA=a66e4702047846cdaa10c66c9d3df3951f5ea70d"
 set "HARBOR_SHA=d4509bbd3804f4b408527f476d764dacd988791d"
 set "TASKS_SHA=3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d"
@@ -26,7 +26,7 @@ set "DSH_SDK_VERSION=0.1.2rc1"
 echo ================================================================================
 echo   AUTONOMOUS DEV PRODUCT READINESS - FAIL CLOSED
 echo ================================================================================
-echo This verifies the real Linux runtime stack through WSL2.
+echo This verifies the exact benchmark launcher commit and real Linux runtime stack through WSL2.
 echo It NEVER starts the 370-pair paid experiment.
 echo It makes at most ONE 8-token DeepSeek live parity call when a key is configured.
 echo.
@@ -46,13 +46,22 @@ if errorlevel 1 (
   exit /b 1
 )
 
+set "BENCH_SHA="
+for /f "delims=" %%H in ('git -C "%~dp0" rev-parse HEAD 2^>nul') do set "BENCH_SHA=%%H"
+if not defined BENCH_SHA (
+  echo [FAIL] product_readiness.bat must run from an exact Git checkout.
+  echo PRODUCT READY: NO
+  pause
+  exit /b 1
+)
+
 if not exist "%WORK%" mkdir "%WORK%"
 if not exist "%CAMPAIGN%" mkdir "%CAMPAIGN%"
 
-echo [1/7] Sync benchmark main with Windows Git...
+echo [1/7] Sync exact benchmark launcher commit %BENCH_SHA% with Windows Git...
 if not exist "%REPO%\.git" (
   if exist "%REPO%" rmdir /s /q "%REPO%"
-  git clone --filter=blob:none "%REPO_URL%" "%REPO%"
+  git clone --filter=blob:none --no-checkout "%REPO_URL%" "%REPO%"
   if errorlevel 1 (
     echo [FAIL] Could not clone autonomous-dev-bench.
     echo PRODUCT READY: NO
@@ -61,22 +70,31 @@ if not exist "%REPO%\.git" (
   )
 )
 git -C "%REPO%" remote set-url origin "%REPO_URL%" >nul 2>nul
-git -C "%REPO%" fetch origin main
+git -C "%REPO%" fetch --depth=1 origin "%BENCH_SHA%"
 if errorlevel 1 (
-  echo [FAIL] Could not fetch benchmark main.
+  echo [FAIL] Could not fetch exact benchmark commit %BENCH_SHA%.
   echo PRODUCT READY: NO
   pause
   exit /b 1
 )
-git -C "%REPO%" checkout --detach --force origin/main
+git -C "%REPO%" checkout --detach --force "%BENCH_SHA%"
 if errorlevel 1 (
-  echo [FAIL] Could not checkout benchmark main.
+  echo [FAIL] Could not checkout exact benchmark commit.
+  echo PRODUCT READY: NO
+  pause
+  exit /b 1
+)
+git -C "%REPO%" clean -ffd >nul 2>nul
+set "OBSERVED_BENCH="
+for /f "delims=" %%H in ('git -C "%REPO%" rev-parse HEAD') do set "OBSERVED_BENCH=%%H"
+if /I not "%OBSERVED_BENCH%"=="%BENCH_SHA%" (
+  echo [FAIL] Benchmark HEAD mismatch: %OBSERVED_BENCH%
   echo PRODUCT READY: NO
   pause
   exit /b 1
 )
 if not exist "%REPO%\tools\product_readiness_linux_campaign.py" (
-  echo [FAIL] This benchmark main does not contain the final readiness campaign.
+  echo [FAIL] Exact benchmark commit does not contain the final readiness campaign.
   echo PRODUCT READY: NO
   pause
   exit /b 1
