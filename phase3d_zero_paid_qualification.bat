@@ -6,7 +6,7 @@ rem This script never starts a model, Harbor grading, or the paid A/B campaign.
 
 cd /d "%~dp0"
 set "BENCH_ROOT=%CD%"
-set "ADCP_COMMIT=e49dc70bfc3552eb07bc55ed45824dbe118ab0eb"
+set "ADCP_COMMIT=d10cfbb0446ead359ab026f64cb5447dcce36782"
 set "ADCP_BRANCH=fix/issue-33-mixed-mode-git-tree"
 set "ADCP_DIR=%BENCH_ROOT%\.autobench-cache\adcp-zero-paid"
 set "OUT=%BENCH_ROOT%\artifacts\phase3d\zero-paid-host"
