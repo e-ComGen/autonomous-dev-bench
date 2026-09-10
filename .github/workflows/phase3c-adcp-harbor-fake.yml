@@ -11,11 +11,16 @@ on:
       - "tests/coding/test_harbor_workspace.py"
       - "tests/coding/test_harbor_cas_export.py"
       - "ADCP.lock.json"
+      - "HARBOR.lock.json"
+      - "qualification/PHASE3D_PRODUCT_READINESS_HOST_20260910.json"
       - ".github/workflows/phase3c-adcp-harbor-fake.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  HARBOR_COMMIT: d4509bbd3804f4b408527f476d764dacd988791d
 
 jobs:
   fake-adcp-harbor:
@@ -29,11 +34,32 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install benchmark and Harbor
+      - name: Checkout exact pinned Harbor source
+        uses: actions/checkout@v4
+        with:
+          repository: harbor-framework/harbor
+          ref: ${{ env.HARBOR_COMMIT }}
+          path: .phase3c-harbor
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify Harbor source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .phase3c-harbor rev-parse HEAD)" = "$HARBOR_COMMIT"
+          test -z "$(git -C .phase3c-harbor status --porcelain --untracked-files=all)"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          lock = json.loads(Path('HARBOR.lock.json').read_text(encoding='utf-8'))
+          assert lock['commit'] == os.environ['HARBOR_COMMIT'], (lock['commit'], os.environ['HARBOR_COMMIT'])
+          assert lock['version'] == '0.22.0'
+          PY
+      - name: Install benchmark and exact Harbor source
         run: |
           set -euo pipefail
           python -m pip install -e '.[dev]'
-          python -m pip install harbor-framework==0.22.0
+          python -m pip install -e .phase3c-harbor
       - name: Run fake ADCP Harbor process boundary
         env:
           AUTOBENCH_ADCP_FAKE_RUNTIME: "1"
