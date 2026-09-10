@@ -3,6 +3,10 @@ setlocal EnableExtensions
 chcp 65001 >nul
 title autonomous-dev-bench PRODUCT READINESS
 
+rem %~dp0 always ends with a backslash. Passing that form directly as a quoted
+rem argv to git.exe can make the trailing backslash escape the closing quote in
+rem Windows command-line parsing. Normalize through "\." before every Git use.
+set "SOURCE_ROOT=%~dp0."
 set "WORK=%~dp0product-readiness-work"
 set "REPO=%WORK%\autonomous-dev-bench"
 set "CAMPAIGN=%WORK%\campaign"
@@ -47,9 +51,11 @@ if errorlevel 1 (
 )
 
 set "BENCH_SHA="
-for /f "delims=" %%H in ('git -C "%~dp0" rev-parse HEAD 2^>nul') do set "BENCH_SHA=%%H"
+for /f "delims=" %%H in ('git -C "%SOURCE_ROOT%" rev-parse --verify HEAD 2^>nul') do set "BENCH_SHA=%%H"
 if not defined BENCH_SHA (
-  echo [FAIL] product_readiness.bat must run from an exact Git checkout.
+  echo [FAIL] Could not resolve Git HEAD for launcher checkout:
+  echo        %SOURCE_ROOT%
+  git -C "%SOURCE_ROOT%" status --short 2>nul
   echo PRODUCT READY: NO
   pause
   exit /b 1
