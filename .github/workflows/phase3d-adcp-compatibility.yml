@@ -1,0 +1,155 @@
+name: phase3d-adcp-zero-paid-compatibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase3d-adcp-compatibility.yml"
+      - "tools/phase3d_adcp_compatibility_preflight.py"
+      - "tests/coding/test_phase3d_adcp_compatibility_preflight.py"
+      - "suites/coding/phase3d_scope.py"
+      - "tests/coding/test_phase3d_scope.py"
+      - "suites/coding/adcp_contract.py"
+      - "tests/core/test_adcp_paid_contract.py"
+      - "packages/benchmark_core/benchmark_core/phase3d_campaign_contract.py"
+      - "tests/core/test_phase3d_campaign_contract.py"
+      - "PHASE3D_EXPERIMENT_PLAN.json"
+
+permissions:
+  contents: read
+
+env:
+  ADCP_COMMIT: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+
+jobs:
+  adcp-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve source line endings before checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Require private ADCP repository credential
+        env:
+          ADCP_REPO_TOKEN: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${ADCP_REPO_TOKEN:-}"
+      - name: Checkout exact ADCP compatibility candidate
+        uses: actions/checkout@v4
+        with:
+          repository: e-ComGen/autonomous-dev-control-plane
+          ref: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+          path: .phase3d-adcp
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact treatment-line identity
+        run: |
+          set -euo pipefail
+          test "$(git -C .phase3d-adcp rev-parse HEAD)" = "$ADCP_COMMIT"
+          test -z "$(git -C .phase3d-adcp status --porcelain --untracked-files=all)"
+      - name: Install ADCP test dependencies
+        run: python -m pip install -e '.phase3d-adcp/packages/shared_contracts[test]' pytest-subtests
+      - name: Run affected ADCP conformance and recovery suites
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/.phase3d-adcp:${{ github.workspace }}/.phase3d-adcp/packages/shared_contracts/src
+        run: |
+          set -euo pipefail
+          python -m pytest -q .phase3d-adcp/packages/shared_contracts/tests
+          python -m pytest -q .phase3d-adcp/tests/zone_development
+          python -m pytest -q .phase3d-adcp/tests/harness_bridge
+          python -m pytest -q .phase3d-adcp/tests/architecture_assurance
+          python -m pytest -q .phase3d-adcp/tests/ecacc
+          python -m pytest -q \
+            .phase3d-adcp/tests/test_badc.py \
+            .phase3d-adcp/tests/test_badc_contract_conformance.py \
+            .phase3d-adcp/tests/test_badc_ecacc_integration.py \
+            .phase3d-adcp/tests/test_badc_zone_session.py
+          python -m compileall -q \
+            .phase3d-adcp/packages/zone_development \
+            .phase3d-adcp/packages/harness_bridge
+
+  compatibility-preflight:
+    needs: adcp-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Require private ADCP repository credential
+        shell: bash
+        env:
+          ADCP_REPO_TOKEN: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${ADCP_REPO_TOKEN:-}"
+      - name: Checkout exact ADCP compatibility candidate
+        uses: actions/checkout@v4
+        with:
+          repository: e-ComGen/autonomous-dev-control-plane
+          ref: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
+          path: .phase3d-adcp
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Install benchmark and ADCP contract dependencies
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pip install -e '.phase3d-adcp/packages/shared_contracts[test]'
+      - name: Unit-check compatibility firewall
+        run: >-
+          python -m pytest -q
+          tests/coding/test_phase3d_scope.py
+          tests/coding/test_phase3d_adcp_compatibility_preflight.py
+          tests/core/test_adcp_paid_contract.py
+          tests/core/test_phase3d_campaign_contract.py
+      - name: Exercise exact Git substrate on all ten locked SWE-bench base trees
+        env:
+          PYTHONHASHSEED: "0"
+        run: >-
+          python tools/phase3d_adcp_compatibility_preflight.py
+          --adcp-root .phase3d-adcp
+          --adcp-sha 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          --output artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json
+      - name: Assert zero-paid evidence
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          value = json.loads(Path("artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json").read_text(encoding="utf-8"))
+          assert value["status"] == "PASS"
+          assert value["adcp_commit"] == "8cdcd34da54ee9c70d0b685c3647e252d8ae038a"
+          assert value["task_count"] == value["tasks_passed"] == 10
+          assert value["model_called"] is False
+          assert value["paid_model_called"] is False
+          assert value["official_grader_called"] is False
+          assert value["hidden_evaluation_material_used"] is False
+          assert all(row["status"] == "PASS" for row in value["results"])
+          assert all(row["untouched_entries_preserved"] for row in value["results"])
+          assert all(row["real_write_tree_match"] for row in value["results"])
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3d-adcp-zero-paid-compat-${{ github.run_id }}
+          path: artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json
+          if-no-files-found: warn
+          retention-days: 30
