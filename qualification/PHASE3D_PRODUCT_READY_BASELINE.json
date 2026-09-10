@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "PHASE3D_PRODUCT_READY_BASELINE",
+  "status": "PASS",
+  "benchmark_commit": "7880559431bb3154dae7e69d5751da94734fd4fd",
+  "host_qualified_runtime_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+  "host_qualification_record": "qualification/PHASE3D_PRODUCT_READINESS_HOST_20260910.json",
+  "workflow_runs": {
+    "ci": 34512411491,
+    "phase3b_deepseek_estimator": 34512411533,
+    "phase3c_adcp_harbor_fake": 34512411487,
+    "phase3d_adcp_zero_paid_compatibility": 34512411474,
+    "phase3d7_design_lock_candidate": 34512411462,
+    "product_readiness_offline": 34512411481
+  },
+  "workflow_conclusions": {
+    "ci": "success",
+    "phase3b_deepseek_estimator": "success",
+    "phase3c_adcp_harbor_fake": "success",
+    "phase3d_adcp_zero_paid_compatibility": "success",
+    "phase3d7_design_lock_candidate": "success",
+    "product_readiness_offline": "success"
+  },
+  "pins": {
+    "adcp": "e7f40c497cc0cabfeea2ee8af3d126fd18ec6e13",
+    "deepseek_harness": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
+    "harbor": "d4509bbd3804f4b408527f476d764dacd988791d",
+    "swe_bench_tasks": "3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d"
+  },
+  "experiment_design": {
+    "pair_count": 370,
+    "repeat_count_per_task": 37,
+    "task_count": 10,
+    "schedule_identity": "sha256:05c43a35e67f2f2b1a00346785ded3c5e3ff51370f2bda952340c490470b298b",
+    "candidate_plan_digest": "sha256:68e521552a1e14ce6d91d1d5fa4bb8e76033d0cc426ed5a4a9ef5e56ea4c0630",
+    "outcome_data_used": false
+  },
+  "paid_admission": {
+    "paid_ready": true,
+    "paid_paired_ab_started": false,
+    "completed_pairs": 0,
+    "winner": "UNKNOWN"
+  }
+}
