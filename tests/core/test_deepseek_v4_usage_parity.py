@@ -113,6 +113,7 @@ def test_high_effort_live_usage_matches_provider_accounted_prompt_and_keeps_safe
     assert result == {
         "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
         "status": "PASS",
+        "estimated_input_tokens": 37,
         "provider_accounted_input_tokens": 37,
         "reference_envelope_input_tokens": 90,
         "provider_prompt_tokens": 37,
