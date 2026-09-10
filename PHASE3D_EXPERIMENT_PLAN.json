@@ -54,10 +54,10 @@
     "cross_arm_mutable_state_reuse": false
   },
   "campaign": {
-    "scope_policy": "phase3d-public-static-python-scope-v1",
+    "scope_policy": "phase3d-public-static-python-scope-v2",
     "scope_max_files": 24,
     "scope_visible_source_bytes": 524288,
-    "internal_adcp_evaluation_policy": "phase3d-public-handoff-nonempty-change-v1",
+    "internal_adcp_evaluation_policy": "phase3d-public-handoff-canonical-binding-v2",
     "max_output_tokens_per_request": 16384,
     "valid_task_failure_policy": "grade_empty_or_nonready_as_unresolved",
     "hidden_evaluation_material_visible_to_arms": false,
