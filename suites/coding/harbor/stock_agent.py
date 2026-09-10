@@ -71,10 +71,8 @@ class StockDeepSeekAgent(BaseAgent):
             runner_env["AUTOBENCH_FAKE_MODEL"] = "1"
 
         execution = await environment.exec(
-            f"python {self.RUNNER_PATH}",
-            cwd=workspace.repository_root,
-            env=runner_env,
-            timeout_sec=600,
+            f"python {self.RUNNER_PATH}", cwd=workspace.repository_root,
+            env=runner_env, timeout_sec=600,
         )
         if execution.return_code != 0:
             stderr = (execution.stderr or execution.stdout or "")[-4000:]
@@ -91,8 +89,8 @@ class StockDeepSeekAgent(BaseAgent):
             raise ValueError("stock DeepSeek model identity changed")
 
         patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
-        if not patch.strip():
-            raise ValueError("stock DeepSeek Harness produced no repository patch")
+        # Empty output is a valid scientific failure. The official evaluator,
+        # not the transport adapter, decides RESOLVED vs UNRESOLVED.
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
 
@@ -122,5 +120,6 @@ class StockDeepSeekAgent(BaseAgent):
                 "max_tokens_per_request": 16384,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
+                "empty_patch": not patch.strip(),
             }
         }
