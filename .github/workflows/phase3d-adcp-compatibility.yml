@@ -13,12 +13,13 @@ on:
       - "packages/benchmark_core/benchmark_core/phase3d_campaign_contract.py"
       - "tests/core/test_phase3d_campaign_contract.py"
       - "PHASE3D_EXPERIMENT_PLAN.json"
+      - "PHASE3D_CAMPAIGN_POLICY.json"
 
 permissions:
   contents: read
 
 env:
-  ADCP_COMMIT: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+  ADCP_COMMIT: e49dc70bfc3552eb07bc55ed45824dbe118ab0eb
 
 jobs:
   adcp-regression:
@@ -51,7 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: e-ComGen/autonomous-dev-control-plane
-          ref: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          ref: ${{ env.ADCP_COMMIT }}
           token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
           path: .phase3d-adcp
           persist-credentials: false
@@ -106,7 +107,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: e-ComGen/autonomous-dev-control-plane
-          ref: 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          ref: ${{ env.ADCP_COMMIT }}
           token: ${{ secrets.AUTOBENCH_ADCP_REPO_TOKEN }}
           path: .phase3d-adcp
           persist-credentials: false
@@ -128,16 +129,17 @@ jobs:
         run: >-
           python tools/phase3d_adcp_compatibility_preflight.py
           --adcp-root .phase3d-adcp
-          --adcp-sha 8cdcd34da54ee9c70d0b685c3647e252d8ae038a
+          --adcp-sha "$ADCP_COMMIT"
           --output artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json
       - name: Assert zero-paid evidence
         shell: python
         run: |
           import json
+          import os
           from pathlib import Path
           value = json.loads(Path("artifacts/phase3d/ADCP_COMPATIBILITY_PREFLIGHT.json").read_text(encoding="utf-8"))
           assert value["status"] == "PASS"
-          assert value["adcp_commit"] == "8cdcd34da54ee9c70d0b685c3647e252d8ae038a"
+          assert value["adcp_commit"] == os.environ["ADCP_COMMIT"]
           assert value["task_count"] == value["tasks_passed"] == 10
           assert value["model_called"] is False
           assert value["paid_model_called"] is False
