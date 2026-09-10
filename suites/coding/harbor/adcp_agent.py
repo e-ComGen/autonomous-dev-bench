@@ -1,40 +1,33 @@
-"""Harbor adapter for the externally supplied ADCP runner process.
+"""Harbor adapter for the pinned controller-side ADCP runtime.
 
-The public benchmark does not vendor or import the private ADCP runtime. The task
-image/operator supplies ``/opt/autobench/run_adcp.py``. This adapter passes only
-the budget-proxy route/credential, validates the strict public receipt, and
-exports the actual Harbor workspace diff independently of that receipt.
+The SWE-bench task image remains the canonical project environment. ADCP executes
+under the benchmark controller's pinned Python, against an exact tarred clone of
+the task Git workspace, then its resulting Git diff is applied back to the task
+workspace. The real provider credential never enters either workspace.
 """
-
 from __future__ import annotations
 
 import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
+import tarfile
+import tempfile
 from urllib.request import urlopen
 
 from harbor.agents.base import BaseAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from suites.coding.adcp_contract import (
-    ADCP_COMMIT,
-    ADCP_INTEGRATION,
-    ADCP_MODEL_ROUTE,
-    ADCP_REPOSITORY,
-    ADCP_RUNTIME,
-    parse_adcp_runner_receipt,
-)
+from suites.coding.adcp_contract import ADCP_COMMIT, ADCP_INTEGRATION, ADCP_MODEL_ROUTE, ADCP_REPOSITORY, ADCP_RUNTIME, parse_adcp_runner_receipt
 from .workspace import HarborWorkspaceFacade
 
 
 class ADCPHarborAgent(BaseAgent):
-    """Run one externally composed ADCP development session inside Harbor."""
-
-    RUNNER_PATH = "/opt/autobench/run_adcp.py"
-    INSTRUCTION_PATH = "/tmp/autobench-adcp-instruction.md"
-    RESULT_PATH = "/tmp/autobench-adcp-result.json"
+    SNAPSHOT_PATH = "/tmp/autobench-adcp-workspace.tar.gz"
+    APPLY_PATCH_PATH = "/tmp/autobench-adcp.patch"
 
     @staticmethod
     def name() -> str:
@@ -45,80 +38,110 @@ class ADCPHarborAgent(BaseAgent):
         self.model_name = model_name or ADCP_MODEL_ROUTE
 
     def version(self) -> str:
-        return "1.0.0"
+        return "2.0.0"
 
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        if not await environment.is_file(self.RUNNER_PATH):
-            raise FileNotFoundError(f"external ADCP runner missing from task image: {self.RUNNER_PATH}")
+        adcp_root = self._required_env("AUTOBENCH_ADCP_ROOT")
+        observed = self._git(Path(adcp_root), "rev-parse", "HEAD")
+        if observed != ADCP_COMMIT:
+            raise ValueError(f"ADCP checkout mismatch: expected {ADCP_COMMIT}, got {observed}")
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         proxy_base_url = self._required_env("AUTOBENCH_MODEL_PROXY_BASE_URL")
         proxy_token = self._required_env("AUTOBENCH_MODEL_PROXY_TOKEN")
-        fake_runtime = os.environ.get("AUTOBENCH_ADCP_FAKE_RUNTIME") == "1"
-
-        instruction_file = self.logs_dir / "INSTRUCTION.md"
-        instruction_file.write_text(instruction, encoding="utf-8")
-        await environment.upload_file(instruction_file, self.INSTRUCTION_PATH)
+        adcp_root = Path(self._required_env("AUTOBENCH_ADCP_ROOT")).resolve()
+        if os.environ.get("AUTOBENCH_DEEPSEEK_UPSTREAM_API_KEY"):
+            raise RuntimeError("controller agent environment exposes the upstream provider credential")
 
         workspace = HarborWorkspaceFacade(environment)
         baseline_commit = await workspace.repository_head()
         await workspace.require_clean_tracked_baseline()
         baseline_untracked = await workspace.untracked_paths()
 
-        credential_probe = await environment.exec(
-            "test -z \"${AUTOBENCH_DEEPSEEK_UPSTREAM_API_KEY:-}\"",
+        tar_result = await environment.exec(
+            f"tar -C {workspace.repository_root} -czf {self.SNAPSHOT_PATH} .",
             cwd=workspace.repository_root,
+            timeout_sec=120,
         )
-        if credential_probe.return_code != 0:
-            raise RuntimeError("task environment exposes an upstream provider credential")
+        if tar_result.return_code != 0:
+            raise RuntimeError("could not snapshot task workspace: " + (tar_result.stderr or tar_result.stdout or "")[-3000:])
 
-        runner_env = {
-            "AUTOBENCH_ADCP_INSTRUCTION_PATH": self.INSTRUCTION_PATH,
-            "AUTOBENCH_ADCP_RESULT_PATH": self.RESULT_PATH,
-            "AUTOBENCH_ADCP_WORKSPACE": workspace.repository_root,
-            "AUTOBENCH_ADCP_TARGET_REPOSITORY": ADCP_REPOSITORY,
-            "AUTOBENCH_ADCP_TARGET_COMMIT": ADCP_COMMIT,
-            "AUTOBENCH_ADCP_TARGET_RUNTIME": ADCP_RUNTIME,
-            "AUTOBENCH_ADCP_TARGET_INTEGRATION": ADCP_INTEGRATION,
-            "AUTOBENCH_ADCP_MODEL": self.model_name,
-            "AUTOBENCH_ADCP_PROVIDER": "deepseek-official",
-            "AUTOBENCH_ADCP_MAX_TOKENS_PER_REQUEST": "16384",
-            "AUTOBENCH_MODEL_PROXY_MODE": "1",
-            "DEEPSEEK_BASE_URL": proxy_base_url,
-            "DEEPSEEK_API_KEY": proxy_token,
-        }
-        if fake_runtime:
-            runner_env["AUTOBENCH_ADCP_FAKE_RUNTIME"] = "1"
+        instruction_path = self.logs_dir / "INSTRUCTION.md"
+        instruction_path.write_text(instruction, encoding="utf-8")
+        local_archive = self.logs_dir / "workspace.tar.gz"
+        await environment.download_file(self.SNAPSHOT_PATH, local_archive)
 
-        execution = await environment.exec(
-            f"python3 {self.RUNNER_PATH}",
-            cwd=workspace.repository_root,
-            env=runner_env,
-            timeout_sec=600,
-        )
-        if execution.return_code != 0:
-            diagnostic = (execution.stderr or execution.stdout or "")[-5000:]
-            raise RuntimeError(f"external ADCP runner failed ({execution.return_code}): {diagnostic}")
+        with tempfile.TemporaryDirectory(prefix="autobench-adcp-task-") as temporary:
+            local_workspace = Path(temporary) / "workspace"
+            local_workspace.mkdir()
+            with tarfile.open(local_archive, "r:gz") as archive:
+                archive.extractall(local_workspace, filter="data")
+            if self._git(local_workspace, "rev-parse", "HEAD") != baseline_commit:
+                raise RuntimeError("downloaded task snapshot changed baseline commit")
 
-        local_result = self.logs_dir / "ADCP_RESULT.json"
-        await environment.download_file(self.RESULT_PATH, local_result)
-        raw = json.loads(local_result.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise ValueError("external ADCP runner returned a non-object receipt")
-        receipt = parse_adcp_runner_receipt(
-            raw,
-            allow_fake_runtime=fake_runtime,
-            require_repair_cycle=fake_runtime,
-            allow_nonready_terminal=not fake_runtime,
-        )
+            result_path = Path(temporary) / "ADCP_RESULT.json"
+            state_root = Path(temporary) / "state"
+            env = os.environ.copy()
+            # Runner receives only the experiment proxy credential. The upstream
+            # key stays inside the host-side budget proxy process.
+            env.pop("DEEPSEEK_API_KEY", None)
+            env.pop("AUTOBENCH_DEEPSEEK_UPSTREAM_API_KEY", None)
+            env.update({
+                "AUTOBENCH_ADCP_ROOT": str(adcp_root),
+                "AUTOBENCH_ADCP_INSTRUCTION_PATH": str(instruction_path),
+                "AUTOBENCH_ADCP_RESULT_PATH": str(result_path),
+                "AUTOBENCH_ADCP_WORKSPACE": str(local_workspace),
+                "AUTOBENCH_ADCP_STATE_ROOT": str(state_root),
+                "AUTOBENCH_ADCP_TARGET_REPOSITORY": ADCP_REPOSITORY,
+                "AUTOBENCH_ADCP_TARGET_COMMIT": ADCP_COMMIT,
+                "AUTOBENCH_ADCP_TARGET_RUNTIME": ADCP_RUNTIME,
+                "AUTOBENCH_ADCP_TARGET_INTEGRATION": ADCP_INTEGRATION,
+                "AUTOBENCH_ADCP_MODEL": self.model_name,
+                "AUTOBENCH_ADCP_PROVIDER": "deepseek-official",
+                "AUTOBENCH_MODEL_PROXY_MODE": "1",
+                "DEEPSEEK_BASE_URL": proxy_base_url,
+                "DEEPSEEK_API_KEY": proxy_token,
+            })
+            runner = Path(__file__).with_name("adcp_swebench_runner.py")
+            completed = subprocess.run(
+                [sys.executable, str(runner)],
+                cwd=Path(__file__).resolve().parents[3], env=env,
+                text=True, encoding="utf-8", errors="replace",
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                timeout=600, check=False,
+            )
+            if completed.stdout:
+                (self.logs_dir / "ADCP_RUNNER.log").write_text(completed.stdout, encoding="utf-8")
+            if completed.returncode != 0 or not result_path.is_file():
+                raise RuntimeError(f"controller-side ADCP runner failed ({completed.returncode}): {(completed.stdout or '')[-5000:]}")
 
-        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
-        # Empty or partial output is a scientific failure, not infrastructure.
-        # Official SWE-bench is the only authority that converts this patch into
-        # RESOLVED/UNRESOLVED.
+            raw = json.loads(result_path.read_text(encoding="utf-8"))
+            receipt = parse_adcp_runner_receipt(raw, allow_nonready_terminal=True)
+            patch = subprocess.run(
+                ["git", "-C", str(local_workspace), "diff", "--binary", "--no-ext-diff", f"{baseline_commit}..HEAD", "--"],
+                text=True, encoding="utf-8", errors="strict", capture_output=True,
+                timeout=60, check=True,
+            ).stdout
+
+        patch_bytes = len(patch.encode("utf-8"))
+        if patch_bytes > 262144:
+            raise RuntimeError(f"ADCP patch exceeds preregistered cap: {patch_bytes}")
         patch_path = self.logs_dir / "PATCH.diff"
         patch_path.write_text(patch, encoding="utf-8")
+        if patch:
+            await environment.upload_file(patch_path, self.APPLY_PATCH_PATH)
+            applied = await environment.exec(
+                f"git apply --binary --whitespace=nowarn {self.APPLY_PATCH_PATH}",
+                cwd=workspace.repository_root,
+                timeout_sec=120,
+            )
+            if applied.return_code != 0:
+                raise RuntimeError("ADCP patch could not be applied to exact task baseline: " + (applied.stderr or applied.stdout or "")[-3000:])
+
+        observed_patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
+        if observed_patch != patch:
+            raise RuntimeError("task workspace diff differs from controller-side ADCP patch")
 
         usage = self._usage_snapshot(receipt.model_called)
         context.n_input_tokens = usage["input_tokens"]
@@ -130,6 +153,7 @@ class ADCPHarborAgent(BaseAgent):
                 "agent": "adcp",
                 "baseline_commit": baseline_commit,
                 "environment_id": getattr(environment, "environment_id", None),
+                "controller_python": sys.version.split()[0],
                 "target_runtime": {
                     "repository": receipt.target_runtime.repository,
                     "commit": receipt.target_runtime.commit,
@@ -137,7 +161,6 @@ class ADCPHarborAgent(BaseAgent):
                     "integration": receipt.target_runtime.integration,
                 },
                 "runtime_loaded": receipt.runtime_loaded,
-                "fake_runtime": receipt.fake_runtime,
                 "role_ids": dict(receipt.role_ids),
                 "role_call_counts": dict(receipt.role_call_counts),
                 "event_sequence": list(receipt.event_sequence),
@@ -156,11 +179,18 @@ class ADCPHarborAgent(BaseAgent):
                 "proxy_credential_present": receipt.proxy_credential_present,
                 "max_tokens_per_request": 16384,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
-                "patch_bytes": len(patch.encode("utf-8")),
+                "patch_bytes": patch_bytes,
                 "empty_patch": not patch.strip(),
                 "budget_proxy": usage,
             }
         }
+
+    @staticmethod
+    def _git(root: Path, *args: str) -> str:
+        completed = subprocess.run(["git", "-C", str(root), *args], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30, check=False)
+        if completed.returncode:
+            raise RuntimeError(completed.stderr[-2000:])
+        return completed.stdout.strip()
 
     @staticmethod
     def _required_env(name: str) -> str:
@@ -172,15 +202,7 @@ class ADCPHarborAgent(BaseAgent):
     @staticmethod
     def _usage_snapshot(model_called: bool) -> dict[str, int | float | bool]:
         if not model_called:
-            return {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cache_tokens": 0,
-                "total_model_tokens": 0,
-                "requests": 0,
-                "cost_usd": 0.0,
-                "accounting_unknown": False,
-            }
+            return {"input_tokens": 0, "output_tokens": 0, "cache_tokens": 0, "total_model_tokens": 0, "requests": 0, "cost_usd": 0.0, "accounting_unknown": False}
         url = os.environ.get("AUTOBENCH_MODEL_PROXY_USAGE_URL")
         if not url:
             raise ValueError("model-calling ADCP run requires AUTOBENCH_MODEL_PROXY_USAGE_URL")
@@ -193,7 +215,6 @@ class ADCPHarborAgent(BaseAgent):
         budget = payload["budget"]
         if budget.get("open_reservations") != 0:
             raise ValueError("budget proxy still has open model-call reservations")
-
         result: dict[str, int | float | bool] = {"accounting_unknown": False}
         for name in ("input_tokens", "output_tokens", "cache_tokens", "total_model_tokens", "requests"):
             value = budget.get(name)
