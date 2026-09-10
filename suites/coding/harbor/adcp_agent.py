@@ -50,16 +50,9 @@ class ADCPHarborAgent(BaseAgent):
     async def setup(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         if not await environment.is_file(self.RUNNER_PATH):
-            raise FileNotFoundError(
-                f"external ADCP runner missing from task image: {self.RUNNER_PATH}"
-            )
+            raise FileNotFoundError(f"external ADCP runner missing from task image: {self.RUNNER_PATH}")
 
-    async def run(
-        self,
-        instruction: str,
-        environment: BaseEnvironment,
-        context: AgentContext,
-    ) -> None:
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         proxy_base_url = self._required_env("AUTOBENCH_MODEL_PROXY_BASE_URL")
         proxy_token = self._required_env("AUTOBENCH_MODEL_PROXY_TOKEN")
         fake_runtime = os.environ.get("AUTOBENCH_ADCP_FAKE_RUNTIME") == "1"
@@ -73,9 +66,6 @@ class ADCPHarborAgent(BaseAgent):
         await workspace.require_clean_tracked_baseline()
         baseline_untracked = await workspace.untracked_paths()
 
-        # Defence in depth: the runner environment must not already contain a
-        # separately named upstream key. DEEPSEEK_API_KEY below is intentionally
-        # the proxy credential, matching the stock Harness environment contract.
         credential_probe = await environment.exec(
             "test -z \"${AUTOBENCH_DEEPSEEK_UPSTREAM_API_KEY:-}\"",
             cwd=workspace.repository_root,
@@ -93,9 +83,8 @@ class ADCPHarborAgent(BaseAgent):
             "AUTOBENCH_ADCP_TARGET_INTEGRATION": ADCP_INTEGRATION,
             "AUTOBENCH_ADCP_MODEL": self.model_name,
             "AUTOBENCH_ADCP_PROVIDER": "deepseek-official",
+            "AUTOBENCH_ADCP_MAX_TOKENS_PER_REQUEST": "16384",
             "AUTOBENCH_MODEL_PROXY_MODE": "1",
-            # Existing DeepSeek/Harness consumers can use their normal variable
-            # names while receiving only proxy connection facts.
             "DEEPSEEK_BASE_URL": proxy_base_url,
             "DEEPSEEK_API_KEY": proxy_token,
         }
@@ -106,13 +95,11 @@ class ADCPHarborAgent(BaseAgent):
             f"python3 {self.RUNNER_PATH}",
             cwd=workspace.repository_root,
             env=runner_env,
-            timeout_sec=180,
+            timeout_sec=600,
         )
         if execution.return_code != 0:
             diagnostic = (execution.stderr or execution.stdout or "")[-5000:]
-            raise RuntimeError(
-                f"external ADCP runner failed ({execution.return_code}): {diagnostic}"
-            )
+            raise RuntimeError(f"external ADCP runner failed ({execution.return_code}): {diagnostic}")
 
         local_result = self.logs_dir / "ADCP_RESULT.json"
         await environment.download_file(self.RESULT_PATH, local_result)
@@ -165,6 +152,7 @@ class ADCPHarborAgent(BaseAgent):
                 "model_calls_via_budget_proxy": receipt.model_calls_via_budget_proxy,
                 "upstream_provider_credential_present": receipt.upstream_provider_credential_present,
                 "proxy_credential_present": receipt.proxy_credential_present,
+                "max_tokens_per_request": 16384,
                 "patch_sha256": hashlib.sha256(patch.encode("utf-8")).hexdigest(),
                 "patch_bytes": len(patch.encode("utf-8")),
                 "budget_proxy": usage,
