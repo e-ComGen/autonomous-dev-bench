@@ -10,25 +10,21 @@ from pathlib import Path
 from benchmark_core.deepseek_v4_estimator import DeepSeekV4RequestEstimator
 
 
-"""Verify hosted DeepSeek usage is covered by the pinned local reservation.
+"""Verify hosted DeepSeek usage against the pinned local reservation model.
 
-DeepSeek explicitly treats response ``usage`` as the source of truth for actual
-processed/billed tokens. The open-weight V4 reference encoder is still valuable
-pre-dispatch because it can construct a deterministic conservative reservation,
-but hosted chat framing is not byte/token identical to that reference prompt.
+DeepSeek response ``usage`` is the source of truth for actual processed tokens.
+The pinned open-weight V4 reference encoder remains the deterministic
+pre-dispatch reservation model. For the locked high-effort qualification probe,
+we render the request twice:
 
-The shipping benchmark policy is thinking enabled with ``reasoning_effort=high``.
-For a live capture this verifier renders the same request twice with the pinned
-reference encoder:
+* ``low`` removes only the reference encoder's textual reasoning-effort prefix;
+* ``high`` is the full production reservation envelope used before dispatch.
 
-* ``low`` removes only the reference encoder's textual effort-control prefix and
-  forms a lower structural reference for the user/system payload;
-* ``high`` is the exact production reservation envelope used before dispatch.
-
-Qualification is fail-closed unless the official provider ``prompt_tokens`` is
-bracketed by those references and the request uses the locked high-effort policy.
-No hard-coded token delta from a prior live response is used. The verifier never
-reads an API key and never contacts DeepSeek.
+Qualification records both an exact fixed-probe parity signal and a conservative
+coverage signal. The readiness gate may require exact parity for this one frozen
+probe, while paid execution continues to reserve the full high-effort envelope
+and commits actual provider usage afterwards. No observed token delta is
+hard-coded. This verifier never reads an API key and never contacts DeepSeek.
 """
 
 LOCKED_REASONING_EFFORT = "high"
@@ -92,6 +88,7 @@ def verify_capture(capture: dict[str, object], cache_dir: Path) -> dict[str, obj
     lower_tokens = lower.input_tokens
     upper_tokens = reference.input_tokens
     reference_effort_prefix_tokens = upper_tokens - lower_tokens
+    exact_match = lower_tokens == prompt_tokens
     provider_above_lower_reference = prompt_tokens >= lower_tokens
     reference_envelope_non_underestimate = upper_tokens >= prompt_tokens
     effort_prefix_structure_ok = reference_effort_prefix_tokens > 0
@@ -108,12 +105,17 @@ def verify_capture(capture: dict[str, object], cache_dir: Path) -> dict[str, obj
         "qualification_mode": "CONSERVATIVE_REFERENCE_ENVELOPE_V1",
         "locked_reasoning_effort": LOCKED_REASONING_EFFORT,
         "request_policy_matches": request_policy_matches,
+        # Compatibility/audit fields: this is the no-effort-prefix reference,
+        # not the production reservation count.
+        "estimated_input_tokens": lower_tokens,
+        "provider_accounted_input_tokens": lower_tokens,
         "no_effort_prefix_reference_input_tokens": lower_tokens,
         "reference_envelope_input_tokens": upper_tokens,
         "provider_prompt_tokens": prompt_tokens,
         "provider_overhead_vs_lower_reference": prompt_tokens - lower_tokens,
         "reference_effort_prefix_tokens": reference_effort_prefix_tokens,
         "reservation_headroom_tokens": upper_tokens - prompt_tokens,
+        "exact_match": exact_match,
         "provider_above_lower_reference": provider_above_lower_reference,
         "reference_envelope_non_underestimate": reference_envelope_non_underestimate,
         "effort_prefix_structure_ok": effort_prefix_structure_ok,
