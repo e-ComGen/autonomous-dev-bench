@@ -67,7 +67,9 @@ echo [2/7] Installing deterministic test dependencies...
 %PY% -m pip install -e "%ADCP_DIR%\packages\shared_contracts[test]" pytest-subtests || goto :failed
 %PY% -m pip install -e ".[dev]" || goto :failed
 
-set "PYTHONPATH=%ADCP_DIR%;%ADCP_DIR%\packages\shared_contracts\src"
+rem Match the ADCP BADC conformance workflow: tests are intentionally importable
+rem as top-level support modules inside subprocess isolation checks.
+set "PYTHONPATH=%ADCP_DIR%;%ADCP_DIR%\packages\shared_contracts\src;%ADCP_DIR%\tests"
 pushd "%ADCP_DIR%"
 
 echo [3/7] Running canonical contracts + Zone Development + recovery regressions...
