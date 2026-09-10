@@ -15,7 +15,7 @@ import subprocess
 from typing import Iterable
 
 
-SCOPE_POLICY = "phase3d-public-static-python-scope-v1"
+SCOPE_POLICY = "phase3d-public-static-python-scope-v2"
 MAX_SCOPE_FILES = 24
 MAX_SCOPE_BYTES = 512 * 1024
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
