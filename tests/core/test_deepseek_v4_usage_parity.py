@@ -73,7 +73,7 @@ def test_estimator_console_noise_is_suppressed_for_json_cli_contract(
     assert captured.err == ""
 
 
-def _live_capture(*, prompt_tokens: int = 37) -> dict[str, object]:
+def _live_capture(*, prompt_tokens: int = 37, reasoning_effort: str = "high") -> dict[str, object]:
     return {
         "request": {
             "model": "deepseek-v4-flash",
@@ -84,7 +84,7 @@ def _live_capture(*, prompt_tokens: int = 37) -> dict[str, object]:
             "stream": True,
             "stream_options": {"include_usage": True},
             "thinking": {"type": "enabled"},
-            "reasoning_effort": "high",
+            "reasoning_effort": reasoning_effort,
             "max_tokens": 8,
         },
         "usage": {"prompt_tokens": prompt_tokens},
@@ -93,14 +93,11 @@ def _live_capture(*, prompt_tokens: int = 37) -> dict[str, object]:
     }
 
 
-def test_high_effort_live_usage_matches_provider_accounted_prompt_and_keeps_safe_reference_envelope(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
+def _install_estimator(monkeypatch, *, low: int, high: int) -> None:
     class FakeEstimator:
         def estimate(self, request):
             effort = request.get("reasoning_effort")
-            return SimpleNamespace(input_tokens=37 if effort == "low" else 90)
+            return SimpleNamespace(input_tokens=low if effort == "low" else high)
 
     monkeypatch.setattr(
         parity_tool.DeepSeekV4RequestEstimator,
@@ -108,74 +105,85 @@ def test_high_effort_live_usage_matches_provider_accounted_prompt_and_keeps_safe
         lambda **kwargs: FakeEstimator(),
     )
 
-    result = parity_tool.verify_capture(_live_capture(), tmp_path)
 
-    assert result == {
-        "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
-        "status": "PASS",
-        "estimated_input_tokens": 37,
-        "provider_accounted_input_tokens": 37,
-        "reference_envelope_input_tokens": 90,
-        "provider_prompt_tokens": 37,
-        "reference_effort_prefix_tokens": 53,
-        "exact_match": True,
-        "reference_envelope_non_underestimate": True,
-        "effort_prefix_structure_ok": True,
-        "provider": "deepseek-official",
-        "model_called": True,
-    }
-
-
-def test_live_usage_still_fails_when_provider_accounted_prompt_is_not_exact(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    class FakeEstimator:
-        def estimate(self, request):
-            effort = request.get("reasoning_effort")
-            return SimpleNamespace(input_tokens=38 if effort == "low" else 91)
-
-    monkeypatch.setattr(
-        parity_tool.DeepSeekV4RequestEstimator,
-        "from_huggingface_revision",
-        lambda **kwargs: FakeEstimator(),
-    )
+def test_exact_fixed_probe_is_inside_safe_reference_envelope(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=37, high=90)
 
     result = parity_tool.verify_capture(_live_capture(prompt_tokens=37), tmp_path)
 
-    assert result["status"] == "FAIL"
-    assert result["exact_match"] is False
-    assert result["reference_envelope_non_underestimate"] is True
-
-
-def test_live_usage_fails_closed_if_reference_envelope_underestimates_provider(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    class FakeEstimator:
-        def estimate(self, request):
-            effort = request.get("reasoning_effort")
-            return SimpleNamespace(input_tokens=37 if effort == "low" else 36)
-
-    monkeypatch.setattr(
-        parity_tool.DeepSeekV4RequestEstimator,
-        "from_huggingface_revision",
-        lambda **kwargs: FakeEstimator(),
-    )
-
-    result = parity_tool.verify_capture(_live_capture(prompt_tokens=37), tmp_path)
-
-    assert result["status"] == "FAIL"
+    assert result["scope"] == "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_COVERAGE"
+    assert result["status"] == "PASS"
+    assert result["qualification_mode"] == "CONSERVATIVE_REFERENCE_ENVELOPE_V1"
+    assert result["request_policy_matches"] is True
+    assert result["estimated_input_tokens"] == 37
+    assert result["provider_accounted_input_tokens"] == 37
+    assert result["no_effort_prefix_reference_input_tokens"] == 37
+    assert result["reference_envelope_input_tokens"] == 90
+    assert result["provider_prompt_tokens"] == 37
+    assert result["reference_effort_prefix_tokens"] == 53
+    assert result["reservation_headroom_tokens"] == 53
     assert result["exact_match"] is True
+    assert result["coverage_pass"] is True
+    assert result["reference_envelope_non_underestimate"] is True
+    assert result["provider_usage_source_of_truth"] is True
+
+
+def test_coverage_can_pass_while_exact_probe_parity_is_false(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=37, high=90)
+
+    result = parity_tool.verify_capture(_live_capture(prompt_tokens=40), tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["coverage_pass"] is True
+    assert result["exact_match"] is False
+    assert result["provider_overhead_vs_lower_reference"] == 3
+    assert result["reservation_headroom_tokens"] == 50
+
+
+def test_live_usage_fails_when_provider_is_below_structural_reference(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=38, high=91)
+
+    result = parity_tool.verify_capture(_live_capture(prompt_tokens=37), tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["coverage_pass"] is False
+    assert result["provider_above_lower_reference"] is False
+    assert result["exact_match"] is False
+
+
+def test_live_usage_fails_closed_if_reference_envelope_underestimates_provider(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=37, high=40)
+
+    result = parity_tool.verify_capture(_live_capture(prompt_tokens=41), tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["coverage_pass"] is False
     assert result["reference_envelope_non_underestimate"] is False
+
+
+def test_live_usage_fails_closed_when_high_effort_prefix_is_not_positive(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=37, high=37)
+
+    result = parity_tool.verify_capture(_live_capture(prompt_tokens=37), tmp_path)
+
+    assert result["status"] == "FAIL"
     assert result["effort_prefix_structure_ok"] is False
 
 
-def test_provider_accounting_only_changes_reasoning_effort_control() -> None:
+def test_live_usage_fails_closed_when_request_policy_differs(tmp_path: Path, monkeypatch) -> None:
+    _install_estimator(monkeypatch, low=37, high=90)
+
+    result = parity_tool.verify_capture(_live_capture(prompt_tokens=37, reasoning_effort="max"), tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["request_policy_matches"] is False
+
+
+def test_no_effort_prefix_projection_only_changes_reasoning_effort_control() -> None:
     original = _live_capture()["request"]
     assert isinstance(original, dict)
 
-    adjusted = parity_tool._provider_accounted_request(original)
+    adjusted = parity_tool._no_effort_prefix_request(original)
 
     assert adjusted["reasoning_effort"] == "low"
     restored = dict(adjusted)
