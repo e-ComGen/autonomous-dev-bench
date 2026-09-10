@@ -125,7 +125,13 @@ class ADCPHarborAgent(BaseAgent):
             require_repair_cycle=fake_runtime,
         )
 
-        patch = await workspace.git_diff(baseline_untracked=baseline_untracked)
+        # The production Zone runtime commits every CandidateSnapshot in its
+        # isolated development branch. Export from the immutable pre-agent
+        # baseline, not merely from the current working-tree/index state.
+        patch = await workspace.git_diff_from(
+            baseline_commit,
+            baseline_untracked=baseline_untracked,
+        )
         if not patch.strip():
             raise ValueError("ADCP runner reached CANDIDATE_READY without an observable workspace patch")
         patch_path = self.logs_dir / "PATCH.diff"
