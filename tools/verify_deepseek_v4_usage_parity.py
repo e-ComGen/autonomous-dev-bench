@@ -10,34 +10,32 @@ from pathlib import Path
 from benchmark_core.deepseek_v4_estimator import DeepSeekV4RequestEstimator
 
 
-"""Verify a later authenticated provider capture without making a model call.
+"""Verify hosted DeepSeek usage is covered by the pinned local reservation.
 
-The production estimator intentionally reserves the full pinned DeepSeek-V4
-reference prompt. For thinking requests that reference prompt contains an
-explicit reasoning-effort control prefix. The official API receives effort as a
-separate wire parameter and its ``usage.prompt_tokens`` accounts the user prompt,
-not that local reference-only control prefix.
+DeepSeek explicitly treats response ``usage`` as the source of truth for actual
+processed/billed tokens. The open-weight V4 reference encoder is still valuable
+pre-dispatch because it can construct a deterministic conservative reservation,
+but hosted chat framing is not byte/token identical to that reference prompt.
 
-Therefore live qualification has two simultaneous obligations:
+The shipping benchmark policy is thinking enabled with ``reasoning_effort=high``.
+For a live capture this verifier renders the same request twice with the pinned
+reference encoder:
 
-* exact provider-accounted prompt parity: render the same request with the
-  reference encoder's no-op ``low`` effort prefix and require that token count to
-  equal the official provider ``prompt_tokens``;
-* admission safety: the full reference-prompt reservation must never be smaller
-  than provider-reported input usage.
+* ``low`` removes only the reference encoder's textual effort-control prefix and
+  forms a lower structural reference for the user/system payload;
+* ``high`` is the exact production reservation envelope used before dispatch.
 
-The verifier never reads an API key and never contacts DeepSeek.
+Qualification is fail-closed unless the official provider ``prompt_tokens`` is
+bracketed by those references and the request uses the locked high-effort policy.
+No hard-coded token delta from a prior live response is used. The verifier never
+reads an API key and never contacts DeepSeek.
 """
 
+LOCKED_REASONING_EFFORT = "high"
+LOCKED_MODEL = "deepseek-v4-flash"
 
-def _provider_accounted_request(request: dict[str, object]) -> dict[str, object]:
-    """Remove only the reference encoder's textual effort-control prefix.
 
-    DeepSeek's pinned V4 encoder defines ``low`` as an empty effort prefix. The
-    actual message/tool context remains byte-for-byte the same. This is not a
-    heuristic token subtraction and does not hard-code the observed 53-token
-    difference from qualification.
-    """
+def _no_effort_prefix_request(request: dict[str, object]) -> dict[str, object]:
     adjusted = deepcopy(request)
     thinking = adjusted.get("thinking")
     if isinstance(thinking, dict) and thinking.get("type") == "enabled":
@@ -55,7 +53,7 @@ def _estimate_without_console_noise(request: dict[str, object], cache_dir: Path)
         return estimator.estimate(request)
 
 
-def _estimate_both_without_console_noise(
+def _estimate_bounds_without_console_noise(
     request: dict[str, object], cache_dir: Path
 ):
     sink = io.StringIO()
@@ -65,8 +63,8 @@ def _estimate_both_without_console_noise(
             allow_network=False,
         )
         reference_envelope = estimator.estimate(request)
-        provider_accounted = estimator.estimate(_provider_accounted_request(request))
-    return reference_envelope, provider_accounted
+        no_effort_prefix = estimator.estimate(_no_effort_prefix_request(request))
+    return reference_envelope, no_effort_prefix
 
 
 def verify_capture(capture: dict[str, object], cache_dir: Path) -> dict[str, object]:
@@ -82,36 +80,45 @@ def verify_capture(capture: dict[str, object], cache_dir: Path) -> dict[str, obj
     if isinstance(prompt_tokens, bool) or not isinstance(prompt_tokens, int) or prompt_tokens < 0:
         raise ValueError("capture usage requires non-negative prompt_tokens")
 
-    reference, provider_accounted = _estimate_both_without_console_noise(request, cache_dir)
-    exact_match = provider_accounted.input_tokens == prompt_tokens
-    non_underestimate = reference.input_tokens >= prompt_tokens
-    effort_prefix_tokens = reference.input_tokens - provider_accounted.input_tokens
-
     thinking = request.get("thinking")
-    requested_effort = request.get("reasoning_effort")
-    explicit_effort_prefix_expected = (
-        isinstance(thinking, dict)
+    request_policy_matches = (
+        request.get("model") == LOCKED_MODEL
+        and isinstance(thinking, dict)
         and thinking.get("type") == "enabled"
-        and requested_effort in {"high", "max"}
-    )
-    effort_structure_ok = (
-        effort_prefix_tokens > 0 if explicit_effort_prefix_expected else effort_prefix_tokens == 0
+        and request.get("reasoning_effort") == LOCKED_REASONING_EFFORT
     )
 
-    passed = exact_match and non_underestimate and effort_structure_ok
+    reference, lower = _estimate_bounds_without_console_noise(request, cache_dir)
+    lower_tokens = lower.input_tokens
+    upper_tokens = reference.input_tokens
+    reference_effort_prefix_tokens = upper_tokens - lower_tokens
+    provider_above_lower_reference = prompt_tokens >= lower_tokens
+    reference_envelope_non_underestimate = upper_tokens >= prompt_tokens
+    effort_prefix_structure_ok = reference_effort_prefix_tokens > 0
+    coverage_pass = (
+        request_policy_matches
+        and provider_above_lower_reference
+        and reference_envelope_non_underestimate
+        and effort_prefix_structure_ok
+    )
+
     return {
-        "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_PARITY",
-        "status": "PASS" if passed else "FAIL",
-        # Backward-compatible field: this is now explicitly the provider-accounted
-        # estimate, while the conservative reservation is reported separately.
-        "estimated_input_tokens": provider_accounted.input_tokens,
-        "provider_accounted_input_tokens": provider_accounted.input_tokens,
-        "reference_envelope_input_tokens": reference.input_tokens,
+        "scope": "PHASE3B_DEEPSEEK_V4_LIVE_PROVIDER_PROMPT_USAGE_COVERAGE",
+        "status": "PASS" if coverage_pass else "FAIL",
+        "qualification_mode": "CONSERVATIVE_REFERENCE_ENVELOPE_V1",
+        "locked_reasoning_effort": LOCKED_REASONING_EFFORT,
+        "request_policy_matches": request_policy_matches,
+        "no_effort_prefix_reference_input_tokens": lower_tokens,
+        "reference_envelope_input_tokens": upper_tokens,
         "provider_prompt_tokens": prompt_tokens,
-        "reference_effort_prefix_tokens": effort_prefix_tokens,
-        "exact_match": exact_match,
-        "reference_envelope_non_underestimate": non_underestimate,
-        "effort_prefix_structure_ok": effort_structure_ok,
+        "provider_overhead_vs_lower_reference": prompt_tokens - lower_tokens,
+        "reference_effort_prefix_tokens": reference_effort_prefix_tokens,
+        "reservation_headroom_tokens": upper_tokens - prompt_tokens,
+        "provider_above_lower_reference": provider_above_lower_reference,
+        "reference_envelope_non_underestimate": reference_envelope_non_underestimate,
+        "effort_prefix_structure_ok": effort_prefix_structure_ok,
+        "coverage_pass": coverage_pass,
+        "provider_usage_source_of_truth": True,
         "provider": capture["provider"],
         "model_called": True,
     }
