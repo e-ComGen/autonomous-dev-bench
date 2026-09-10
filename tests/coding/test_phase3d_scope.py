@@ -58,3 +58,16 @@ def test_static_scope_fails_closed_when_no_source_symbol_matches(tmp_path: Path)
     repo = fixture_repo(tmp_path)
     with pytest.raises(ValueError, match="no bounded source candidate"):
         select_write_scope(str(repo), "zzzzcompletelyunknownsymbolzzzz")
+
+
+def test_static_scope_never_grants_write_authority_to_100755_python(tmp_path: Path):
+    repo = fixture_repo(tmp_path)
+    executable = repo / "package" / "executable.py"
+    executable.write_text("def executable_only_symbol():\n    return 1\n", encoding="utf-8")
+    git(repo, "add", "package/executable.py")
+    git(repo, "update-index", "--chmod=+x", "package/executable.py")
+    git(repo, "commit", "-m", "add executable python")
+    assert git(repo, "ls-tree", "HEAD", "package/executable.py").startswith("100755 blob ")
+
+    with pytest.raises(ValueError, match="no bounded source candidate"):
+        select_write_scope(str(repo), "Fix executable_only_symbol behavior")
