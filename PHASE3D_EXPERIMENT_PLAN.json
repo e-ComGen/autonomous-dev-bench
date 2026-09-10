@@ -12,7 +12,7 @@
     "arm_b": {
       "name": "adcp",
       "implementation": "adcp_zone_development",
-      "commit": "285702063815280398b95ba8696566259c8b5b34",
+      "commit": "95c07df4a6dfe2c6cda6de28e2039c370a989fc0",
       "runtime": "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime",
       "integration": "existing-v2-runtime-role-ports"
     },
@@ -20,6 +20,24 @@
     "provider": "deepseek-official",
     "intended_difference": "agent_orchestration_only"
   },
+  "outcome_blind_amendments": [
+    {
+      "id": "phase3d-real-repository-substrate-v1",
+      "paid_pairs_completed_before_amendment": 0,
+      "outcome_data_used": false,
+      "hidden_task_outcomes_used": false,
+      "old_adcp_commit": "285702063815280398b95ba8696566259c8b5b34",
+      "new_adcp_commit": "95c07df4a6dfe2c6cda6de28e2039c370a989fc0",
+      "reason": "Pre-paid compatibility correction: exact Git trees may contain executable, symlink and non-UTF8 blobs and real repositories exceed the original raw role-source transport assumptions. The amendment changes substrate representation only and preserves ADCP authority/runtime semantics."
+    },
+    {
+      "id": "phase3d-public-only-adcp-handoff-verifier-v1",
+      "paid_pairs_completed_before_amendment": 0,
+      "outcome_data_used": false,
+      "hidden_task_outcomes_used": false,
+      "reason": "Freeze the previously unspecified internal ADCP acceptance boundary before any paid pair: internal ECACC may establish only exact source binding plus a non-empty candidate change and clean review; it may not consume gold.patch, test.patch, tests.json, official grader output or claim TASK_COMPLETED. Official SWE-bench v5 remains sole task-correctness authority."
+    }
+  ],
   "corpus": {
     "dataset": "verified",
     "official_swebench_version": "5.0.2",
@@ -51,7 +69,9 @@
     "pair_id_template": "phase3d-{task_id}-r{repeat_index}",
     "repeat_count_per_task": 37,
     "workspace_policy": "fresh_independent_environment_per_arm",
-    "cross_arm_mutable_state_reuse": false
+    "cross_arm_mutable_state_reuse": false,
+    "max_tokens_per_model_request": 16384,
+    "adcp_internal_acceptance": "public-only exact-source-binding + non-empty-source-change + clean-review; never official correctness"
   },
   "budget": {
     "primary_fairness_measure": "total_model_tokens",
