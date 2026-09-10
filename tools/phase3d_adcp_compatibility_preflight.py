@@ -14,7 +14,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -78,13 +77,15 @@ def ensure_repository(cache_root: Path, repository: str, commit: str) -> Path:
     bare = cache_root / "git" / (slug + ".git")
     bare.parent.mkdir(parents=True, exist_ok=True)
     if not bare.exists():
-        subprocess.run(
+        result = subprocess.run(
             ["git", "clone", "--bare", "--filter=blob:none", f"https://github.com/{repository}.git", str(bare)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=600,
-            check=True,
+            check=False,
         )
+        if result.returncode:
+            raise RuntimeError(result.stderr.decode("utf-8", "replace")[-4000:])
     fetch = subprocess.run(
         ["git", "-C", str(bare), "fetch", "--no-tags", "origin", commit],
         stdout=subprocess.PIPE,
@@ -172,6 +173,17 @@ def entry_identity(entry) -> tuple[str, str, str, int | None]:
     return entry.mode, entry.kind, entry.oid, entry.size
 
 
+def changed_text(original_text: str, visible_bytes: int) -> str:
+    if original_text.endswith("\n"):
+        return original_text[:-1]
+    if visible_bytes < MAX_SCOPE_BYTES:
+        return original_text + "\n"
+    if not original_text:
+        raise ValueError("cannot create a bounded non-empty text mutation at the exact source limit")
+    replacement = " " if original_text[-1] != " " else "\t"
+    return original_text[:-1] + replacement
+
+
 def exercise_task(
     *,
     task_id: str,
@@ -217,8 +229,9 @@ def exercise_task(
 
         edit_path = scope.paths[0]
         original_text = dict(projection.files)[edit_path]
-        marker = "# AUTOBENCH_ZERO_PAID_COMPATIBILITY_PREFLIGHT\n"
-        edited_text = original_text + ("" if original_text.endswith("\n") else "\n") + marker
+        edited_text = changed_text(original_text, scope.visible_bytes)
+        if edited_text == original_text:
+            raise ValueError("preflight text mutation must change the Git blob")
         request = SimpleNamespace(
             baseline=baseline_ref,
             write_scope=SimpleNamespace(paths=scope.paths),
@@ -241,6 +254,8 @@ def exercise_task(
                 raise ValueError(f"untouched Git identity changed: {path}")
         if after[edit_path].mode != "100644" or after[edit_path].kind != "blob":
             raise ValueError("ordinary text edit changed Git mode/type")
+        if after[edit_path].oid == by_path[edit_path].oid:
+            raise ValueError("preflight edit did not produce a new text blob")
         write_tree = git(worktree, "write-tree").stdout.decode("ascii").strip()
         committed_tree = git(worktree, "rev-parse", "HEAD^{tree}").stdout.decode("ascii").strip()
         if write_tree != committed_tree or result_ref.tree.value != committed_tree:
@@ -284,13 +299,11 @@ def main() -> int:
     if _SHA1.fullmatch(args.adcp_sha) is None:
         raise SystemExit("--adcp-sha must be an exact lowercase SHA-1")
     adcp_root = args.adcp_root.resolve()
-    configure_adcp_imports(adcp_root, args.adcp_sha)
     sc, FileEdit, GitWorkspace = configure_adcp_imports(adcp_root, args.adcp_sha)
 
     cache_root = args.cache_root.resolve()
     cache_root.mkdir(parents=True, exist_ok=True)
     task_repo = ensure_repository(cache_root, TASK_REPOSITORY, TASK_REPOSITORY_COMMIT)
-    require_exact_head(task_repo, TASK_REPOSITORY_COMMIT, "SWE-bench task repository")
 
     results = []
     with tempfile.TemporaryDirectory(prefix="autobench-phase3d-compat-") as temp_name:
