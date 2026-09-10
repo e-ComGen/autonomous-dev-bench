@@ -3,7 +3,7 @@
 This module contains no private ADCP source and imports no ADCP package. It
 validates a narrow receipt emitted by an operator-supplied runner. The receipt
 is evidence about composition identity only; the benchmark independently reads
-the actual workspace diff and Harbor verifier result.
+the actual workspace diff and official evaluator result.
 """
 
 from __future__ import annotations
@@ -20,6 +20,11 @@ ADCP_RECEIPT_SCHEMA = "autobench.adcp-harbor-result/1"
 ADCP_MODEL_ROUTE = "deepseek-v4-flash"
 ADCP_PROVIDER_ROUTE = "deepseek-official"
 ROLE_NAMES = ("architect", "coder", "reviewer", "verifier")
+TERMINAL_OUTCOMES = {
+    "CANDIDATE_READY", "BLOCKED_DEPENDENCY", "BLOCKED_ARCHITECTURE",
+    "BLOCKED_REQUIREMENT", "BUDGET_EXHAUSTED", "CANCELLED", "FENCED",
+    "FAILED_BOUNDED",
+}
 
 
 class ADCPReceiptError(ValueError):
@@ -62,26 +67,11 @@ class ADCPRunnerReceipt:
 
 
 _TOP_LEVEL_FIELDS = {
-    "schema",
-    "target_runtime",
-    "runtime_loaded",
-    "fake_runtime",
-    "role_ids",
-    "role_call_counts",
-    "event_sequence",
-    "outcome_status",
-    "candidate_ready",
-    "task_completed",
-    "model_route",
-    "provider_route",
-    "model_calls_via_budget_proxy",
-    "upstream_provider_credential_present",
-    "proxy_credential_present",
-    "model_called",
-    "session_id",
-    "request_id",
-    "candidate_snapshot_id",
-    "repair_count",
+    "schema", "target_runtime", "runtime_loaded", "fake_runtime", "role_ids",
+    "role_call_counts", "event_sequence", "outcome_status", "candidate_ready",
+    "task_completed", "model_route", "provider_route", "model_calls_via_budget_proxy",
+    "upstream_provider_credential_present", "proxy_credential_present", "model_called",
+    "session_id", "request_id", "candidate_snapshot_id", "repair_count",
 }
 
 
@@ -90,13 +80,14 @@ def parse_adcp_runner_receipt(
     *,
     allow_fake_runtime: bool = False,
     require_repair_cycle: bool = False,
+    allow_nonready_terminal: bool = False,
 ) -> ADCPRunnerReceipt:
     """Validate one exact external-runner receipt.
 
-    Fake mode proves only the public process/Harbor contract. Production mode
-    additionally requires the runner to attest that the pinned private runtime
-    was actually loaded. Neither mode trusts the receipt for the source patch or
-    final grading result.
+    ``allow_nonready_terminal`` is for paid benchmark execution only: a valid
+    terminal ADCP failure remains a scientific UNRESOLVED outcome instead of an
+    infrastructure exclusion. Qualification keeps the historical strict
+    CANDIDATE_READY contract by leaving this flag false.
     """
     if set(raw) != _TOP_LEVEL_FIELDS:
         missing = sorted(_TOP_LEVEL_FIELDS - set(raw))
@@ -134,13 +125,17 @@ def parse_adcp_runner_receipt(
     role_ids = {name: _text(role_ids_raw[name], f"{name} role id") for name in ROLE_NAMES}
     if len(set(role_ids.values())) != len(ROLE_NAMES):
         raise ADCPReceiptError("Architect, Coder, Reviewer and Verifier identities must be distinct")
-    role_counts = {name: _positive_int(role_counts_raw[name], f"{name} role call count") for name in ROLE_NAMES}
+    count_parser = _non_negative_int if allow_nonready_terminal else _positive_int
+    role_counts = {name: count_parser(role_counts_raw[name], f"{name} role call count") for name in ROLE_NAMES}
 
     sequence_raw = raw.get("event_sequence")
-    if not isinstance(sequence_raw, list) or not sequence_raw:
-        raise ADCPReceiptError("event_sequence must be a non-empty list")
-    event_sequence = tuple(_text(item, "event") for item in sequence_raw)
-    _require_subsequence(event_sequence, ("ARCHITECT", "CODER", "REVIEWER", "VERIFIER"))
+    if not isinstance(sequence_raw, list) or any(not isinstance(item, str) or not item for item in sequence_raw):
+        raise ADCPReceiptError("event_sequence must be a string list")
+    event_sequence = tuple(sequence_raw)
+    if not allow_nonready_terminal:
+        if not event_sequence:
+            raise ADCPReceiptError("event_sequence must be non-empty")
+        _require_subsequence(event_sequence, ("ARCHITECT", "CODER", "REVIEWER", "VERIFIER"))
 
     repair_count = _non_negative_int(raw.get("repair_count"), "repair_count")
     if require_repair_cycle:
@@ -156,8 +151,15 @@ def parse_adcp_runner_receipt(
     outcome_status = _text(raw.get("outcome_status"), "outcome_status")
     candidate_ready = _boolean(raw.get("candidate_ready"), "candidate_ready")
     task_completed = _boolean(raw.get("task_completed"), "task_completed")
-    if outcome_status != "CANDIDATE_READY" or not candidate_ready or task_completed:
-        raise ADCPReceiptError("ADCP boundary requires CANDIDATE_READY and forbids TASK_COMPLETED")
+    if task_completed:
+        raise ADCPReceiptError("ADCP boundary forbids TASK_COMPLETED authority")
+    if allow_nonready_terminal:
+        if outcome_status not in TERMINAL_OUTCOMES:
+            raise ADCPReceiptError("ADCP paid run returned a non-terminal/unknown outcome")
+        if candidate_ready != (outcome_status == "CANDIDATE_READY"):
+            raise ADCPReceiptError("candidate_ready disagrees with terminal outcome status")
+    elif outcome_status != "CANDIDATE_READY" or not candidate_ready:
+        raise ADCPReceiptError("ADCP qualification requires CANDIDATE_READY")
 
     model_route = _text(raw.get("model_route"), "model_route")
     provider_route = _text(raw.get("provider_route"), "provider_route")
@@ -175,21 +177,12 @@ def parse_adcp_runner_receipt(
         raise ADCPReceiptError("deterministic fake qualification must not call a model")
 
     return ADCPRunnerReceipt(
-        target_runtime=target,
-        runtime_loaded=runtime_loaded,
-        fake_runtime=fake_runtime,
-        role_ids=role_ids,
-        role_call_counts=role_counts,
-        event_sequence=event_sequence,
-        outcome_status=outcome_status,
-        candidate_ready=candidate_ready,
-        task_completed=task_completed,
-        model_route=model_route,
-        provider_route=provider_route,
-        model_calls_via_budget_proxy=True,
-        upstream_provider_credential_present=False,
-        proxy_credential_present=True,
-        model_called=model_called,
+        target_runtime=target, runtime_loaded=runtime_loaded, fake_runtime=fake_runtime,
+        role_ids=role_ids, role_call_counts=role_counts, event_sequence=event_sequence,
+        outcome_status=outcome_status, candidate_ready=candidate_ready, task_completed=False,
+        model_route=model_route, provider_route=provider_route,
+        model_calls_via_budget_proxy=True, upstream_provider_credential_present=False,
+        proxy_credential_present=True, model_called=model_called,
         session_id=_text(raw.get("session_id"), "session_id"),
         request_id=_text(raw.get("request_id"), "request_id"),
         candidate_snapshot_id=_text(raw.get("candidate_snapshot_id"), "candidate_snapshot_id"),
