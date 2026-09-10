@@ -13,7 +13,7 @@ from typing import Mapping, Sequence
 
 
 ADCP_REPOSITORY = "e-ComGen/autonomous-dev-control-plane"
-ADCP_COMMIT = "285702063815280398b95ba8696566259c8b5b34"
+ADCP_COMMIT = "95c07df4a6dfe2c6cda6de28e2039c370a989fc0"
 ADCP_RUNTIME = "packages.zone_development.assured_runtime.ZoneDevelopmentRuntime"
 ADCP_INTEGRATION = "existing-v2-runtime-role-ports"
 ADCP_RECEIPT_SCHEMA = "autobench.adcp-harbor-result/1"
