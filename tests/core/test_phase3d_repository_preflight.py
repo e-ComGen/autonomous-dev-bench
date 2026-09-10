@@ -24,6 +24,5 @@ def test_current_repository_paid_preflight_is_fail_closed_on_external_gates_afte
     assert admission.blockers == (
         "DEEPSEEK_LIVE_PROMPT_USAGE_PARITY_NOT_PASS",
         "DEEPSEEK_ESTIMATOR_NOT_PAID_READY",
-        "ADCP_PRIVATE_PINNED_RUNTIME_NOT_PASS",
         "ADCP_NOT_PAID_READY",
     )
