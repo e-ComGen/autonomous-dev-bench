@@ -58,6 +58,30 @@ def test_workspace_facade_exports_untracked_files_without_staging_them():
     assert any("'new file.txt'" in call[0] for call in environment.calls)
 
 
+def test_workspace_facade_exports_committed_candidate_from_exact_baseline():
+    baseline = "a" * 40
+    environment = FakeEnvironment([
+        FakeResult(stdout="diff --git a/source.py b/source.py\n+candidate\n"),
+        FakeResult(stdout=""),
+    ])
+    workspace = HarborWorkspaceFacade(environment, "/repo")
+
+    patch = asyncio.run(workspace.git_diff_from(baseline))
+
+    assert "+candidate" in patch
+    assert environment.calls[0][0] == f"git diff --binary --no-ext-diff {baseline} --"
+    assert all(call[1]["cwd"] == "/repo" for call in environment.calls)
+
+
+def test_workspace_facade_rejects_noncanonical_baseline_before_execution():
+    environment = FakeEnvironment([])
+    workspace = HarborWorkspaceFacade(environment)
+
+    with pytest.raises(ValueError, match="exact lowercase SHA-1"):
+        asyncio.run(workspace.git_diff_from("HEAD~1"))
+    assert not environment.calls
+
+
 def test_workspace_facade_fails_closed_on_nonzero_command():
     environment = FakeEnvironment([FakeResult(stderr="denied", return_code=7)])
     workspace = HarborWorkspaceFacade(environment)
