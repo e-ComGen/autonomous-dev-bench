@@ -20,6 +20,8 @@ ADCP_RECEIPT_SCHEMA = "autobench.adcp-harbor-result/1"
 ADCP_PAID_RECEIPT_SCHEMA = "autobench.adcp-harbor-result/2"
 ADCP_MODEL_ROUTE = "deepseek-v4-flash"
 ADCP_PROVIDER_ROUTE = "deepseek-official"
+ADCP_SCOPE_POLICY = "phase3d-public-static-python-scope-v2"
+ADCP_INTERNAL_EVALUATION_POLICY = "phase3d-public-handoff-canonical-binding-v2"
 ROLE_NAMES = ("architect", "coder", "reviewer", "verifier")
 PAID_OUTCOME_STATUSES = {
     "CANDIDATE_READY", "BLOCKED_DEPENDENCY", "BLOCKED_ARCHITECTURE",
@@ -224,9 +226,15 @@ def parse_adcp_paid_runner_receipt(raw: Mapping[str, object]) -> ADCPPaidRunnerR
     write_scope_paths = tuple(paths_raw)
     if len(set(write_scope_paths)) != len(write_scope_paths):
         raise ADCPReceiptError("write_scope_paths contains duplicates")
+    scope_policy = _text(raw.get("scope_policy"), "scope_policy")
+    if scope_policy != ADCP_SCOPE_POLICY:
+        raise ADCPReceiptError("paid ADCP receipt changed the locked write-scope policy")
     scope_digest = _text(raw.get("scope_digest"), "scope_digest")
     if re.fullmatch(r"sha256:[0-9a-f]{64}", scope_digest) is None:
         raise ADCPReceiptError("scope_digest must be a canonical sha256 identity")
+    internal_policy = _text(raw.get("internal_evaluation_policy"), "internal_evaluation_policy")
+    if internal_policy != ADCP_INTERNAL_EVALUATION_POLICY:
+        raise ADCPReceiptError("paid ADCP receipt changed the locked internal handoff policy")
 
     return ADCPPaidRunnerReceipt(
         target_runtime=target, runtime_loaded=True, role_ids=role_ids, role_call_counts=role_counts,
@@ -238,9 +246,8 @@ def parse_adcp_paid_runner_receipt(raw: Mapping[str, object]) -> ADCPPaidRunnerR
         request_id=_text(raw.get("request_id"), "request_id"),
         candidate_snapshot_id=candidate_snapshot_id,
         repair_count=_non_negative_int(raw.get("repair_count"), "repair_count"),
-        scope_policy=_text(raw.get("scope_policy"), "scope_policy"), scope_digest=scope_digest,
-        write_scope_paths=write_scope_paths,
-        internal_evaluation_policy=_text(raw.get("internal_evaluation_policy"), "internal_evaluation_policy"),
+        scope_policy=scope_policy, scope_digest=scope_digest,
+        write_scope_paths=write_scope_paths, internal_evaluation_policy=internal_policy,
     )
 
 
