@@ -91,7 +91,7 @@ jobs:
           assert evidence['production_ready'] is False
           assert evidence['production_blocker'] == 'PINNED_PRIVATE_ADCP_RUNTIME_NOT_QUALIFIED'
           assert lock['fake_process_boundary_status'] == 'PASS'
-          assert lock['private_pinned_runtime_qualification_status'] == 'NOT_RUN'
+          assert lock['private_pinned_runtime_qualification_status'] == 'PASS'
           assert lock['paid_ready'] is False
 
       - uses: actions/upload-artifact@v4
