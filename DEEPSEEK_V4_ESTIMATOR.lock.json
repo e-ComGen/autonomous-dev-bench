@@ -41,19 +41,42 @@
   ],
   "offline_qualification_status": "PASS",
   "offline_qualification": {
-    "workflow_run_id": 34347337284,
-    "head_sha": "fa64a6f72c84a76446b272f951ae4f224f330da3",
-    "artifact_id": 10102254727,
-    "artifact_digest": "sha256:47741fbcdaba2c2009a23467b5c0362333473f0f05438b52d4b86e7dbe8483a6",
+    "workflow_run_id": 34508565175,
+    "head_sha": "7d865382446b2331641b582b8f5b9eaeceaed827",
+    "artifact_id": 10164839100,
+    "artifact_digest": "sha256:4f522ad5912e1cfaed8537f5dcd06bb299e2c42a09a298f7c7506b830560014c",
     "official_encoder_all_four_passed": true,
     "wire_prompt_exact_match": true,
     "wire_case_1_input_tokens": 541,
     "wire_case_1_prompt_sha256": "9b366d9d2eac842a6e890594aac0b58648e5623717202b33497afadf03e26540",
     "encoding_file_sha256": "abc0d26120250dda0ae077dc64aa28836026e61e970854aaeb792445e6a0dde6",
     "tokenizer_file_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",
+    "live_probe_reference_decomposition": {
+      "low_no_prefix_input_tokens": 11,
+      "high_reference_input_tokens": 90,
+      "high_effort_prefix_tokens": 79,
+      "paid_model_called": false
+    },
     "paid_model_called": false
   },
-  "live_provider_prompt_usage_parity": false,
-  "paid_ready": false,
-  "production_blocker": "LIVE_PROVIDER_PROMPT_USAGE_PARITY_NOT_RUN"
+  "live_provider_prompt_usage_parity": true,
+  "live_provider_prompt_usage_coverage": {
+    "status": "PASS",
+    "qualification_mode": "CONSERVATIVE_REFERENCE_ENVELOPE_V1",
+    "qualified_benchmark_commit": "7d865382446b2331641b582b8f5b9eaeceaed827",
+    "qualification_record": "qualification/PHASE3D_PRODUCT_READINESS_HOST_20260910.json",
+    "provider": "deepseek-official",
+    "reasoning_effort": "high",
+    "provider_prompt_tokens": 37,
+    "lower_reference_input_tokens": 11,
+    "reference_envelope_input_tokens": 90,
+    "reference_effort_prefix_tokens": 79,
+    "provider_overhead_vs_lower_reference": 26,
+    "reservation_headroom_tokens": 53,
+    "coverage_pass": true,
+    "provider_usage_source_of_truth": true,
+    "paid_paired_ab_started": false
+  },
+  "paid_ready": true,
+  "production_blocker": null
 }
