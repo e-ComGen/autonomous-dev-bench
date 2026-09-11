@@ -633,7 +633,7 @@ class DurablePhase3DCampaign:
                 if existing.to_canonical_json() != outcome.to_canonical_json():
                     raise Phase3DCampaignError("attempt ledger identity already exists with different evidence")
                 return
-        attempts.append(json.loads(outcome.to_canonical_json()))
+        attempts.append(_outcome_payload(outcome))
         parsed = tuple(_parse_outcome_attempt(item) for item in attempts)
         audit_paired_ledger(self.schedule, parsed)
         ledger["attempts"] = attempts
@@ -707,6 +707,36 @@ class DurablePhase3DCampaign:
             raise Phase3DCampaignError(
                 f"campaign checkout mismatch: expected {self.expected_benchmark_commit}, observed {observed or '<unavailable>'}"
             )
+
+
+def _outcome_payload(outcome: PairOutcomeAttempt) -> dict[str, object]:
+    """Plain-JSON ledger row.
+
+    Canonical model JSON nests a ``Sha256Digest`` as ``{"value": ...}``, which
+    :func:`_parse_outcome_attempt` cannot read back. The ledger is written with
+    digest and reason values as their canonical strings so the round trip is
+    lossless.
+    """
+
+    return {
+        "pair_id": outcome.pair_id,
+        "task_id": outcome.task_id,
+        "repeat_index": outcome.repeat_index,
+        "seed": outcome.seed,
+        "attempt_index": outcome.attempt_index,
+        "stock_manifest_identity": str(outcome.stock_manifest_identity),
+        "adcp_manifest_identity": str(outcome.adcp_manifest_identity),
+        "stock_resolved": outcome.stock_resolved,
+        "adcp_resolved": outcome.adcp_resolved,
+        "stock_grader_evidence": _digest_text(outcome.stock_grader_evidence),
+        "adcp_grader_evidence": _digest_text(outcome.adcp_grader_evidence),
+        "exclusion_reason": None if outcome.exclusion_reason is None else outcome.exclusion_reason.value,
+        "exclusion_evidence": _digest_text(outcome.exclusion_evidence),
+    }
+
+
+def _digest_text(value: Sha256Digest | None) -> str | None:
+    return None if value is None else str(value)
 
 
 def _parse_outcome_attempt(raw: object) -> PairOutcomeAttempt:

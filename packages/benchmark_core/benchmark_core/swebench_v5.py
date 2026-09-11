@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .identity import require_identifier, require_nonempty
 
@@ -146,3 +146,66 @@ class OfficialSwebenchV5:
         for instance_id in ids:
             command.extend(("-i", instance_id))
         return tuple(command)
+
+
+OUTCOME_RESOLVED = "RESOLVED"
+OUTCOME_UNRESOLVED = "UNRESOLVED"
+OUTCOME_EMPTY_PATCH = "EMPTY_PATCH"
+OUTCOME_INFRA_FAILURE = "INFRA_FAILURE"
+OUTCOME_AMBIGUOUS_FAILURE = "AMBIGUOUS_FAILURE"
+OUTCOME_MISSING = "MISSING"
+
+# A report may only place an instance in one bucket; the precedence below is the
+# fail-safe reading when it does not.
+_RESOLUTION_BUCKETS = (
+    ("resolved_ids", OUTCOME_RESOLVED, True),
+    ("infra_failure_ids", OUTCOME_INFRA_FAILURE, None),
+    ("error_ids", OUTCOME_INFRA_FAILURE, None),
+    ("ambiguous_failure_ids", OUTCOME_AMBIGUOUS_FAILURE, None),
+    ("empty_patch_ids", OUTCOME_EMPTY_PATCH, False),
+    ("unresolved_ids", OUTCOME_UNRESOLVED, False),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class OfficialResolution:
+    """The scored outcome of one instance in an official SWE-bench v5 summary.
+
+    ``resolved`` is ``None`` exactly when the official run could not produce a
+    task verdict (infrastructure, ambiguous failure, or no report entry). Those
+    are accounting exclusions, not task failures, and the campaign records them
+    rather than discarding them.
+    """
+
+    instance_id: str
+    outcome: str
+    resolved: bool | None
+
+    def __post_init__(self) -> None:
+        require_identifier(self.instance_id, "SWE-bench instance_id")
+        require_identifier(self.outcome, "official outcome")
+        if self.resolved is not None and not isinstance(self.resolved, bool):
+            raise ValueError("resolved must be boolean or null")
+
+
+def official_outcome(report: Mapping[str, object], instance_id: str) -> OfficialResolution:
+    """Classify one instance from an official SWE-bench result summary.
+
+    This reads the official verdict. It never re-derives one from the patch.
+    """
+
+    require_identifier(instance_id, "SWE-bench instance_id")
+    if not isinstance(report, Mapping):
+        raise ValueError("official SWE-bench summary must be a mapping")
+    resolved = report.get("resolved_ids")
+    if not isinstance(resolved, list):
+        raise ValueError("official SWE-bench summary is missing resolved_ids")
+    for name, _, _ in _RESOLUTION_BUCKETS:
+        value = report.get(name)
+        if value is not None and (not isinstance(value, list) or any(not isinstance(item, str) for item in value)):
+            raise ValueError(f"official SWE-bench summary field {name} must be a string list")
+    for name, outcome, flag in _RESOLUTION_BUCKETS:
+        value = report.get(name)
+        if isinstance(value, list) and instance_id in value:
+            return OfficialResolution(instance_id=instance_id, outcome=outcome, resolved=flag)
+    return OfficialResolution(instance_id=instance_id, outcome=OUTCOME_MISSING, resolved=None)

@@ -35,6 +35,7 @@ class ExperimentDesignSnapshot(CanonicalModel):
     design_paid_ready: bool
     design_blockers: tuple[str, ...]
     task_ids: tuple[str, ...]
+    dataset: str
     official_swebench_version: str
     task_repo_commit: str
     stock_commit: str
@@ -109,6 +110,7 @@ class ExperimentDesignSnapshot(CanonicalModel):
             design_paid_ready=expected_ready,
             design_blockers=computed["blockers"],
             task_ids=tuple(tasks),
+            dataset=str(corpus.get("dataset")),
             official_swebench_version=str(corpus.get("official_swebench_version")),
             task_repo_commit=str(corpus.get("task_repo_commit")),
             stock_commit=str(arm_a.get("commit")),
