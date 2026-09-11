@@ -22,6 +22,7 @@ COMMAND_SCHEMA = "autobench.adcp-dsh-command/1"
 RESULT_SCHEMA = "autobench.adcp-dsh-result/1"
 MODEL_ROUTE = "deepseek-v4-flash"
 PROVIDER_ROUTE = "deepseek-official"
+MODEL_TURN_TRUNCATED = "MODEL_TURN_TRUNCATED"
 
 
 class DeepSeekBindingError(ValueError):
@@ -158,12 +159,15 @@ class DeepSeekHarnessProtocol:
 
         final_response = getattr(result, "final_response", None)
         finish_reason = getattr(result, "finish_reason", None)
-        if not isinstance(final_response, str) or not final_response.strip():
-            raise DeepSeekBindingError("DeepSeek Harness returned no committed root response")
-        if finish_reason != "completed":
-            raise DeepSeekBindingError(f"DeepSeek Harness turn did not complete: {finish_reason!r}")
-        if len(final_response.encode("utf-8")) > command.max_output_bytes:
-            raise DeepSeekBindingError("DeepSeek Harness role response exceeds issued byte bound")
+        if finish_reason == "completed":
+            if not isinstance(final_response, str) or not final_response.strip():
+                raise DeepSeekBindingError("DeepSeek Harness returned no committed root response")
+            if len(final_response.encode("utf-8")) > command.max_output_bytes:
+                raise DeepSeekBindingError("DeepSeek Harness role response exceeds issued byte bound")
+        else:
+            # A non-completed turn is a settled provider result. Never accept its
+            # partial text as a semantic role payload; binding classifies it below.
+            final_response = ""
 
         return DeepSeekRoleResult(
             binding_id=DSH_BINDING_ID,
@@ -300,9 +304,34 @@ class DeepSeekHarnessBinding:
             or result.provider != PROVIDER_ROUTE
             or result.model != MODEL_ROUTE
             or result.sdk_version != DSH_SDK_VERSION
-            or result.finish_reason != "completed"
         ):
             raise DeepSeekBindingError("DeepSeek Harness result identity drift")
+
+        if result.finish_reason == "max-tokens":
+            return RoleReply(
+                call_id=expected.call_id,
+                call_digest=sc.contract_digest(expected),
+                actor_id=expected.actor_id,
+                role=expected.role,
+                protocol_binding_id=DSH_BINDING_ID,
+                status=ReplyStatus.FAILED,
+                payload_json=None,
+                execution_id=result.execution_id,
+                error_code=MODEL_TURN_TRUNCATED,
+            )
+        if result.finish_reason != "completed":
+            return RoleReply(
+                call_id=expected.call_id,
+                call_digest=sc.contract_digest(expected),
+                actor_id=expected.actor_id,
+                role=expected.role,
+                protocol_binding_id=DSH_BINDING_ID,
+                status=ReplyStatus.FAILED,
+                payload_json=None,
+                execution_id=result.execution_id,
+                error_code="MODEL_TURN_FAILED",
+            )
+
         try:
             semantic = json.loads(result.final_response)
         except json.JSONDecodeError as error:
@@ -329,7 +358,7 @@ class DeepSeekHarnessBinding:
                 request_digest=request_digest,
                 author=author,
                 steps=tuple(_text_list(semantic["steps"], "steps")),
-                target_paths=tuple(_text_list(semantic["target_paths"], "target_paths")),
+                target_paths=tuple(_text_list(semantic["target_paths"], "target paths")),
                 alternatives=tuple(_text_list(semantic["alternatives"], "alternatives", allow_empty=True)),
                 remedies=remedies,
                 blockers=blockers,
