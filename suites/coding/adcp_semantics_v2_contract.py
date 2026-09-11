@@ -6,6 +6,6 @@ experiment explicitly adopts this treatment.
 """
 
 ADCP_SEMANTICS_V2_REPOSITORY = "e-ComGen/autonomous-dev-control-plane"
-ADCP_SEMANTICS_V2_COMMIT = "5db862f43e7a15e3b468b4519a7871b90065fcae"
+ADCP_SEMANTICS_V2_COMMIT = "27430f85d2dd3837bdf2da76e36a730fb266fa36"
 ADCP_SEMANTICS_V2_RUNTIME = "packages.zone_development.ArchitectureSemanticsV2Runtime"
 ADCP_SEMANTICS_V2_INTEGRATION = "architecture-semantics-v2-authority-routing-v1"
