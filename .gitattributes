@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.bat text eol=crlf
+# This legacy launcher is committed with CRLF bytes; preserve its object verbatim.
+product_readiness.bat -text
