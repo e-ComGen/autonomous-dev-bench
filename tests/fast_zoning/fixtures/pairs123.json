@@ -1,8 +1,82 @@
 {
-  "provenance": "User-reported historical observations; synthetic report fixtures, not raw OMP traces",
+  "provenance": "Conversation-summary regression fixtures. Resource observations transcribed from earlier assistant reports, not independently reverified against protected raw evidence. Semantic outcomes were explicitly accepted by the user. No synthetic resource values.",
   "pairs": [
-    {"pair_run_id":"PAIR1","primary_semantic":["INCONCLUSIVE","INCONCLUSIVE"],"primary_narrow":["PASS","PASS"],"post_hoc":{"A_semantic_success":"NO","B_semantic_success":"YES","quality_comparison":"B_BETTER","A_different":268,"B_different":0,"cases":642},"A":{"provider_total_tokens":325982,"total_wall_time":206.2470025,"model_turns":17,"tool_calls":19,"read_calls":16},"B":{"provider_total_tokens":436390,"total_wall_time":264.7702375,"model_turns":21,"tool_calls":24,"read_calls":21}},
-    {"pair_run_id":"PAIR2","primary_semantic":["NO","NO"],"A":{"provider_total_tokens":901299,"total_wall_time":271.1570561,"model_turns":31,"tool_calls":35,"read_calls":32},"B":{"provider_total_tokens":474823,"total_wall_time":233.6362124,"model_turns":21,"tool_calls":23,"read_calls":16}},
-    {"pair_run_id":"PAIR3","primary_semantic":["YES","YES"],"A":{"provider_total_tokens":784199,"total_wall_time":368.2151779,"model_turns":31,"tool_calls":36,"read_calls":29},"B":{"provider_total_tokens":529856,"total_wall_time":297.6374507,"model_turns":26,"tool_calls":25,"read_calls":19}}
-  ]
+    {
+      "pair_run_id": "PAIR1",
+      "primary_semantic": [
+        "INCONCLUSIVE",
+        "INCONCLUSIVE"
+      ],
+      "primary_narrow": [
+        "PASS",
+        "PASS"
+      ],
+      "post_hoc": {
+        "A_semantic_success": "NO",
+        "B_semantic_success": "YES",
+        "quality_comparison": "B_BETTER",
+        "A_different": 268,
+        "B_different": 0,
+        "cases": 642
+      },
+      "A": {
+        "provider_total_tokens": 325982,
+        "total_wall_time": 206.247,
+        "model_turns": 17,
+        "tool_calls": 19,
+        "read_calls": 16
+      },
+      "B": {
+        "provider_total_tokens": 436390,
+        "total_wall_time": 264.77,
+        "model_turns": 21,
+        "tool_calls": 24,
+        "read_calls": 21
+      }
+    },
+    {
+      "pair_run_id": "PAIR2",
+      "primary_semantic": [
+        "NO",
+        "NO"
+      ],
+      "A": {
+        "provider_total_tokens": 901299,
+        "total_wall_time": 271.157,
+        "model_turns": 31,
+        "tool_calls": 35,
+        "read_calls": 32
+      },
+      "B": {
+        "provider_total_tokens": 474823,
+        "total_wall_time": 233.636,
+        "model_turns": 21,
+        "tool_calls": 23,
+        "read_calls": 16
+      }
+    },
+    {
+      "pair_run_id": "PAIR3",
+      "primary_semantic": [
+        "YES",
+        "YES"
+      ],
+      "A": {
+        "provider_total_tokens": 784199,
+        "total_wall_time": 368.215,
+        "model_turns": 31,
+        "tool_calls": 36,
+        "read_calls": 29
+      },
+      "B": {
+        "provider_total_tokens": 529856,
+        "total_wall_time": 297.637,
+        "model_turns": 26,
+        "tool_calls": 25,
+        "read_calls": 19
+      }
+    }
+  ],
+  "resource_source": "Earlier conversation assistant final: План расширения: 6 пар, 2 дополнительных репозитория; table Первые три пары. Pair 2 resource values also explicitly repeated by the user. Pair 3 values also present in earlier Pair 3 completed report.",
+  "wall_time_precision": "Seconds rounded to 3 decimal places as displayed in the conversation; extra precision supplied in delegation removed."
 }
