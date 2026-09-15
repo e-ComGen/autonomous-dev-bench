@@ -37,6 +37,7 @@ include = ["benchmark_core*", "cli*", "corpus*", "oracles*", "mutations*", "faul
 exclude = ["tests*", "reference_projects*"]
 
 [tool.setuptools.package-data]
+"benchmark_core.fast_zoning" = ["*.json", "*.md"]
 "suites.auto_refactoring" = ["*.json"]
 "suites.auto_zoning" = ["*.json"]
 

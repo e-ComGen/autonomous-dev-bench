@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "task_id": "EXAMPLE-01",
+  "repo": "./qualified-source",
+  "clean_head": "0000000000000000000000000000000000000000",
+  "clean_tree": "0000000000000000000000000000000000000000",
+  "buggy_head": "0000000000000000000000000000000000000000",
+  "buggy_tree": "0000000000000000000000000000000000000000",
+  "task_text": "Restore the documented observable behavior without changing unrelated behavior.",
+  "task_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "evaluation_plan": {
+    "phase": "PREDECLARED",
+    "frozen": true,
+    "benchmark_head": "0000000000000000000000000000000000000000",
+    "benchmark_tree": "0000000000000000000000000000000000000000",
+    "task_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "evaluators": [
+      {
+        "id": "existing_suite",
+        "category": "existing_suite",
+        "required": true,
+        "identity": "existing_suite-v1",
+        "command": [
+          "python",
+          "{artifact0}",
+          "{workspace}"
+        ],
+        "timeout_seconds": 120,
+        "artifacts": [
+          {
+            "path": "evaluators/existing_suite.py",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      {
+        "id": "targeted_oracle",
+        "category": "targeted_oracle",
+        "required": true,
+        "identity": "targeted_oracle-v1",
+        "command": [
+          "python",
+          "{artifact0}",
+          "{workspace}"
+        ],
+        "timeout_seconds": 120,
+        "artifacts": [
+          {
+            "path": "evaluators/targeted_oracle.py",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      {
+        "id": "differential_check",
+        "category": "differential_check",
+        "required": true,
+        "identity": "differential_check-v1",
+        "command": [
+          "python",
+          "{artifact0}",
+          "{workspace}"
+        ],
+        "timeout_seconds": 120,
+        "artifacts": [
+          {
+            "path": "evaluators/differential_check.py",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      {
+        "id": "metamorphic_check",
+        "category": "metamorphic_check",
+        "required": true,
+        "identity": "metamorphic_check-v1",
+        "command": [
+          "python",
+          "{artifact0}",
+          "{workspace}"
+        ],
+        "timeout_seconds": 120,
+        "artifacts": [
+          {
+            "path": "evaluators/metamorphic_check.py",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      {
+        "id": "cross_component_check",
+        "category": "cross_component_check",
+        "required": true,
+        "identity": "cross_component_check-v1",
+        "command": [
+          "python",
+          "{artifact0}",
+          "{workspace}"
+        ],
+        "timeout_seconds": 120,
+        "artifacts": [
+          {
+            "path": "evaluators/cross_component_check.py",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    ]
+  },
+  "evaluation_plan_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "run_order_seed": "example-phase-1",
+  "contexts": {
+    "A": {
+      "packet_path": "A.md",
+      "packet_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "packet_bytes": 0,
+      "source_item_count": 0,
+      "source_bytes": 0
+    },
+    "B": {
+      "packet_path": "B.md",
+      "packet_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "packet_bytes": 0,
+      "source_item_count": 0,
+      "source_bytes": 0,
+      "zoning": {
+        "zone_id": "REPLACE-WITH-REAL-ZONE",
+        "artifact_paths": [
+          "src"
+        ],
+        "snapshot_id": "REPLACE-WITH-SNAPSHOT",
+        "analysis_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  "execution": {
+    "omp_executable": "C:/Users/Venya/.bun/bin/omp.exe",
+    "omp_version": "18.1.14",
+    "route": "CLI_JSON",
+    "model": "alibaba-token-plan/deepseek-v4-pro",
+    "tools": "read,edit,write",
+    "max_time": "10m"
+  },
+  "model_executed": false,
+  "evaluator_only": {
+    "forbidden_snippets": [],
+    "forbidden_artifacts": []
+  }
+}

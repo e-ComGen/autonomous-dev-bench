@@ -63,3 +63,9 @@ A run is unsuccessful if any critical counter is nonzero, regardless of all othe
 ## Corpus policy
 
 Public corpus manifests pin full commits and canonical source digests. Public development scenarios may ship deterministic fixture/mutation bindings for reproducibility. Sealed campaign labels, private mutations and oracle material live in a separate store and are never mounted into the system-under-test workspace; task projections expose only stage-appropriate public inputs.
+# FAST zoning campaigns
+
+The offline-first [campaign runner](docs/fast-zoning-campaign.md) validates frozen
+benchmark manifests, prepares independent A/B copies, and reports semantic quality
+separately from resource usage. Its validate, plan and summarize commands do not
+invoke models; real execution requires explicit authorization.

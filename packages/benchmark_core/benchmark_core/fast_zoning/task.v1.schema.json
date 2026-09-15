@@ -1,0 +1,386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:e-comgen:fast-zoning:task:v1",
+  "title": "Frozen FAST zoning benchmark task manifest v1",
+  "description": "Runtime validation additionally verifies Git identities, cleanliness, task/hash and plan binding, exact artifact bytes, cross-arm equality, all categories and at least one required evaluator, hash-bound evaluator command, known hidden material exclusion and repository zoning paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "repo",
+    "clean_head",
+    "clean_tree",
+    "buggy_head",
+    "buggy_tree",
+    "task_text",
+    "task_hash",
+    "evaluation_plan",
+    "evaluation_plan_digest",
+    "run_order_seed",
+    "contexts",
+    "execution",
+    "model_executed"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clean_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "clean_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "buggy_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "buggy_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "task_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evaluation_plan": {
+      "type": "object",
+      "required": [
+        "phase",
+        "frozen",
+        "benchmark_head",
+        "benchmark_tree",
+        "task_hash",
+        "evaluators"
+      ],
+      "properties": {
+        "phase": {
+          "const": "PREDECLARED"
+        },
+        "frozen": {
+          "const": true
+        },
+        "benchmark_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "benchmark_tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "task_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evaluators": {
+          "type": "array",
+          "minItems": 5,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "category",
+              "required",
+              "identity",
+              "command",
+              "timeout_seconds",
+              "artifacts"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "enum": [
+                  "existing_suite",
+                  "targeted_oracle",
+                  "differential_check",
+                  "metamorphic_check",
+                  "cross_component_check"
+                ]
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "identity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeout_seconds": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+              },
+              "artifacts": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "sha256"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "evaluation_plan_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "run_order_seed": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contexts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "A",
+        "B"
+      ],
+      "properties": {
+        "A": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "packet_path",
+            "packet_hash",
+            "packet_bytes",
+            "source_item_count",
+            "source_bytes"
+          ],
+          "properties": {
+            "packet_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "packet_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "packet_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_item_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "task_text": {
+              "type": "string"
+            },
+            "task_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "zoning_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "planning_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "preprocessing_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "B": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "packet_path",
+            "packet_hash",
+            "packet_bytes",
+            "source_item_count",
+            "source_bytes",
+            "zoning"
+          ],
+          "properties": {
+            "packet_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "packet_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "packet_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_item_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "task_text": {
+              "type": "string"
+            },
+            "task_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "zoning_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "planning_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "preprocessing_time": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "zoning": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "zone_id",
+                "artifact_paths",
+                "snapshot_id",
+                "analysis_digest"
+              ],
+              "properties": {
+                "zone_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "artifact_paths": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "snapshot_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "analysis_digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "const": {
+        "omp_executable": "C:/Users/Venya/.bun/bin/omp.exe",
+        "omp_version": "18.1.14",
+        "route": "CLI_JSON",
+        "model": "alibaba-token-plan/deepseek-v4-pro",
+        "tools": "read,edit,write",
+        "max_time": "10m"
+      }
+    },
+    "model_executed": {
+      "const": false
+    },
+    "campaign_id": {
+      "type": "string"
+    },
+    "evaluator_only": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "forbidden_snippets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "forbidden_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
