@@ -112,7 +112,7 @@ def campaign_summary(pairs):
         if pair.get("status") == "INFRA_FAILURE":
             counts["pairs_infra_failed"] += 1
             continue
-        if pair.get("status") in {"PLANNED", "VALIDATED", "READY", "RUNNING_A", "RUNNING_B", "EVALUATING"}:
+        if pair.get("status") in {"PLANNED", "VALIDATED", "READY", "PACKETS_IMPORTED", "RUNNING_A", "RUNNING_B", "EVALUATING"}:
             counts["pairs_incomplete"] += 1
             continue
         primary = pair.get("primary_result", {})

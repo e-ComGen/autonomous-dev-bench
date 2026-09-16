@@ -6,10 +6,11 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from benchmark_core.fast_zoning.manifest import InvalidManifest, validate_manifest
+from benchmark_core.fast_zoning.manifest import InvalidManifest, PacketQualityPending, validate_manifest
 from benchmark_core.fast_zoning.runner import execute_pair, plan_campaign
 from benchmark_core.fast_zoning.results import campaign_summary
 from benchmark_core.fast_zoning.qualification_import import attach_packets, import_qualification, validate_import
+from benchmark_core.fast_zoning.packet_import import import_packet_manifest, qualify_packet_set
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -45,6 +46,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     bind.add_argument("bundle_dir", type=Path)
     bind.add_argument("contexts", type=Path)
     bind.add_argument("--bundle-output", type=Path, required=True)
+    packets = actions.add_parser("import-packets")
+    packets.add_argument("bundle_dir", type=Path)
+    packets.add_argument("packet_manifest", type=Path)
+    packets.add_argument("--source-root", type=Path, required=True)
+    packets.add_argument("--packet-version", required=True)
+    packets.add_argument("--bundle-output", type=Path, required=True)
+    quality = actions.add_parser("qualify-packets")
+    quality.add_argument("bundle_dir", type=Path)
+    quality.add_argument("quality_evidence", type=Path)
+    quality.add_argument("--bundle-output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.action == "import-qualification":
@@ -55,6 +66,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.action == "bind-packets":
             result = attach_packets(args.bundle_dir, json.loads(args.contexts.read_text(encoding="utf-8")),
                                     args.bundle_output)
+        elif args.action == "import-packets":
+            result = import_packet_manifest(args.bundle_dir, args.packet_manifest, args.source_root,
+                                            args.bundle_output, packet_version=args.packet_version)
+        elif args.action == "qualify-packets":
+            result = qualify_packet_set(args.bundle_dir, args.quality_evidence, args.bundle_output)
         elif args.action == "validate":
             manifest = validate_manifest(args.manifest)
             result = {"task_id": manifest["task_id"], "TASK_STATUS": "VALIDATED", "MODEL_EXECUTED": False}
@@ -81,7 +97,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             (args.campaign_dir / "campaign-summary.json").write_text(
                 json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")
     except InvalidManifest as exc:
-        result = {"TASK_STATUS": "INVALID_MANIFEST", "MODEL_EXECUTED": False, "error": str(exc)}
+        if isinstance(exc, PacketQualityPending):
+            result = {"TASK_STATUS": "PACKETS_IMPORTED", "PACKETS_IMPORTED": True,
+                      "PACKET_QUALITY_QUALIFIED": False, "EXECUTION_READY": "NO_PACKET_QUALITY",
+                      "MODEL_EXECUTED": False, "error": str(exc)}
+        else:
+            result = {"TASK_STATUS": "INVALID_MANIFEST", "MODEL_EXECUTED": False, "error": str(exc)}
         if getattr(args, "output", None):
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

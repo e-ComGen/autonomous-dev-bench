@@ -4,6 +4,16 @@
   "title": "Frozen FAST zoning benchmark task manifest v1",
   "description": "Runtime validation additionally verifies Git identities, cleanliness, task/hash and plan binding, exact artifact bytes, cross-arm equality, all categories and at least one required evaluator, hash-bound evaluator command, known hidden material exclusion and repository zoning paths.",
   "type": "object",
+  "$defs": {
+    "qualityArtifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
   "additionalProperties": false,
   "required": [
     "schema_version",
@@ -23,6 +33,15 @@
     "model_executed"
   ],
   "properties": {
+    "packet_quality_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packet_set", "quality_evidence"],
+      "properties": {
+        "packet_set": {"$ref": "#/$defs/qualityArtifact"},
+        "quality_evidence": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/qualityArtifact"}]}
+      }
+    },
     "schema_version": {
       "const": 1
     },

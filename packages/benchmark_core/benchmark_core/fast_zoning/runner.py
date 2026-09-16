@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
-from .manifest import InvalidManifest, validate_manifest, digest_bytes, plan_digest
+from .manifest import InvalidManifest, PacketQualityPending, validate_manifest, digest_bytes, plan_digest
 from .gitops import clone_snapshot, verify_source, capture_patch, apply_patch
 from .storage import write_json, state, claim
 from .evaluation import run_evaluators
@@ -29,7 +29,8 @@ def plan_campaign(manifest_path, campaign_dir, pair_run_id):
     except InvalidManifest as exc:
         destination = campaign_dir / 'invalid' / pair_run_id
         destination.mkdir(parents=True, exist_ok=False)
-        state(destination, 'INVALID_MANIFEST', error=str(exc), model_executed=False)
+        state(destination, 'PACKETS_IMPORTED' if isinstance(exc, PacketQualityPending) else 'INVALID_MANIFEST',
+              error=str(exc), model_executed=False)
         raise
     pair_dir = campaign_dir / 'tasks' / manifest['task_id'] / pair_run_id
     pair_dir.mkdir(parents=True, exist_ok=False)

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Operator packet quality qualification for an exact immutable set",
+  "type": "object",
+  "required": ["schema_version", "packet_set_digest", "task_hash", "reviewer_identity", "criteria_identity", "arms", "model_executed"],
+  "properties": {
+    "schema_version": {"const": "packet-quality-v1"},
+    "packet_set_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "task_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reviewer_identity": {"type": "string", "minLength": 1},
+    "criteria_identity": {"type": "string", "minLength": 1},
+    "arms": {"const": {"A": "PASS", "B": "PASS"}},
+    "model_executed": {"const": false}
+  }
+}

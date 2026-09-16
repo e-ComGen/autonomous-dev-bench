@@ -147,7 +147,8 @@ and [packet-build output](../packages/benchmark_core/benchmark_core/fast_zoning/
 ```text
 python -m cli.fast_zoning campaign import-qualification SOURCE_REPO BENCHMARK_REPO ID-01 --bundle-dir imports/ID-01 --run-order-seed expansion-v1-20260916:ID-01
 python -m cli.fast_zoning campaign validate-import imports/ID-01
-python -m cli.fast_zoning campaign bind-packets imports/ID-01 contexts.json --bundle-output imports/ID-01-ready
+python -m cli.fast_zoning campaign import-packets imports/ID-01 packet-manifest.json --source-root SOURCE_REPO --packet-version overnight-v1 --bundle-output imports/ID-01-packets-v1
+python -m cli.fast_zoning campaign validate-import imports/ID-01-packets-v1
 ```
 
 Import derives frozen status only from checked qualification evidence: ready,
@@ -161,10 +162,34 @@ not an executable campaign task. The emitted packet-build request delegates norm
 non-zoned and real zone-aware context construction to cache-harness-addon. This
 repository implements no additional planner and fabricates no packets.
 
-Binding verified packets creates a new bundle and runs the existing campaign
-validator. Hidden qualification data stays private; only the allowlisted public
-task and snapshot data enter the model-visible manifest and packet request.
-Neither import, validation, nor packet binding invokes OMP or a model.
+Packet import preserves the original packet manifest bytes and copies verified A/B
+packet bytes into a new immutable bundle. Packet identity has its own digest and
+version. `PACKETS_IMPORTED=YES` means hashes and task bindings were checked;
+it does not mean packet quality is qualified. Zero source bodies are valid
+provenance and remain inspectable. Such imports report
+`PACKET_QUALITY_QUALIFIED=NO` and `EXECUTION_READY=NO_PACKET_QUALITY`.
+
+Quality qualification requires a separate `packet-quality-v1` evidence document:
+the exact packet-set digest, task hash, reviewer identity, criteria identity,
+`arms: {"A": "PASS", "B": "PASS"}`, and `model_executed: false`.
+The importer verifies these bindings; it does not independently perform or infer
+the quality review. A trusted reviewer must supply evidence after the actual
+packet-quality checks. No quality review is manufactured by packet import.
+
+```text
+python -m cli.fast_zoning campaign qualify-packets imports/ID-01-packets-v1 quality-evidence.json --bundle-output imports/ID-01-qualified-v1
+```
+
+Replacement requires a new packet version and a new output bundle. It preserves
+source qualification digest, task identity, evaluation plan digest and frozen run
+order. Old bundles remain unchanged. A replacement resets quality qualification,
+even when the old set was qualified; evidence for the old digest cannot qualify
+the new set. The legacy `bind-packets` command also produces an unqualified set.
+Campaign validation and planning enforce the gate before model execution.
+
+Hidden qualification data stays private; only the allowlisted public task and
+snapshot data enter the model-visible manifest and packet request. Neither
+import, validation, packet binding nor quality qualification invokes OMP or a model.
 
 ## Morning inspection
 

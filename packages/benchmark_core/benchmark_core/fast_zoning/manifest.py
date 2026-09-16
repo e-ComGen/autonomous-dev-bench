@@ -17,6 +17,10 @@ class InvalidManifest(ValueError):
     pass
 
 
+class PacketQualityPending(InvalidManifest):
+    """Valid packet provenance lacks a separate quality admission record."""
+
+
 def digest_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -56,13 +60,16 @@ def validate_manifest(path):
 load_manifest = validate_manifest
 
 
-def _validate(path):
+def _validate(path, require_packet_quality=True):
     data = json.loads(path.read_text(encoding='utf-8'))
     required = {'schema_version', 'task_id', 'repo', 'clean_head', 'clean_tree',
         'buggy_head', 'buggy_tree', 'task_text', 'task_hash', 'evaluation_plan',
         'evaluation_plan_digest', 'run_order_seed', 'contexts', 'execution', 'model_executed'}
     _require(required <= data.keys(), 'missing required manifest fields')
-    _require(set(data) <= required | {'evaluator_only', 'campaign_id'}, 'unknown manifest field or per-arm override')
+    _require(set(data) <= required | {'evaluator_only', 'campaign_id', 'packet_quality_gate'}, 'unknown manifest field or per-arm override')
+    if 'packet_quality_gate' in data:
+        from .packet_import import validate_quality_gate
+        validate_quality_gate(data, path.parent, require_qualified=require_packet_quality)
     _require(type(data['schema_version']) is int and data['schema_version'] == 1 and data['model_executed'] is False,
              'schema_version must be 1 and model_executed false')
     _require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', data['task_id']) is not None,

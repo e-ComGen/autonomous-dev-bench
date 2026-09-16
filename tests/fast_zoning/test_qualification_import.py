@@ -189,11 +189,14 @@ def test_real_packet_bytes_bind_without_model_process(qualification, monkeypatch
     output = qualification["out"].with_name("bound-import")
     result = attach_packets(qualification["out"], qualification["contexts"], output,
                             contract=qualification["contract"])
-    assert result["execution_ready"] == "YES"
+    assert result["execution_ready"] == "NO_PACKET_QUALITY"
+    assert result["packets_imported"] is True
+    assert result["packet_quality_qualified"] is False
     assert result["source_evaluation_plan_digest"] == digest(qualification["plan"])
     task = output / "test-executable.json"
     task.write_text(json.dumps(result["campaign_manifest"]), encoding="utf-8")
-    assert validate_manifest(task)["task_id"] == "TEST-01"
+    with pytest.raises(InvalidManifest):
+        validate_manifest(task)
     original = json.loads((qualification["out"] / "import.json").read_text())
     assert original["execution_ready"] == "NO_MISSING_PACKETS"
 
@@ -201,6 +204,16 @@ def test_real_packet_bytes_bind_without_model_process(qualification, monkeypatch
 def test_historical_pair_fixtures_remain_frozen():
     fixture = Path(__file__).parent / "fixtures/pairs123.json"
     assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "534e2a9e8734c1bdfcc1b0dfe1cdd1a5794e5d00c6ec85c995135e5ccb94f58b"
+
+
+def test_failed_inline_packet_import_cannot_publish_executable_manifest(qualification):
+    Path(qualification["contexts"]["B"]["packet_path"]).unlink()
+    with pytest.raises((InvalidManifest, OSError)):
+        import_fixture(qualification, contexts=qualification["contexts"])
+    candidate = qualification["out"] / "campaign-manifest.json"
+    if candidate.exists():
+        with pytest.raises(InvalidManifest):
+            validate_manifest(candidate)
 
 
 def test_unknown_source_evaluator_cannot_disappear(qualification):

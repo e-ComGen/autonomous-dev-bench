@@ -27,8 +27,13 @@
     },
     "run_order": {"enum": [["A", "B"], ["B", "A"]]},
     "source_import_valid": {"const": true},
-    "execution_ready": {"enum": ["YES", "NO_MISSING_PACKETS"]},
-    "status": {"enum": ["READY", "IMPORTED_NOT_EXECUTABLE"]},
+    "packet_set_digest": {"$ref": "#/$defs/digest"},
+    "packet_set_version": {"type": "string", "minLength": 1},
+    "packets_imported": {"const": true},
+    "packet_quality_qualified": {"type": "boolean"},
+    "quality_missing_reason": {"enum": [null, "NO_QUALIFICATION_EVIDENCE"]},
+    "execution_ready": {"enum": ["YES", "NO_MISSING_PACKETS", "NO_PACKET_QUALITY"]},
+    "status": {"enum": ["READY", "IMPORTED_NOT_EXECUTABLE", "PACKETS_IMPORTED"]},
     "missing_fields": {"type": "array", "items": {"type": "string"}}
   },
   "$defs": {"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
@@ -38,6 +43,12 @@
       "execution_ready": {"const": "NO_MISSING_PACKETS"},
       "missing_fields": {"const": ["A_PACKET_PATH", "A_PACKET_HASH", "B_PACKET_PATH", "B_PACKET_HASH"]}
     }},
-    "else": {"properties": {"execution_ready": {"const": "YES"}, "missing_fields": {"const": []}}}
+    "else": {
+      "required": ["packet_set_digest", "packet_set_version", "packets_imported", "packet_quality_qualified", "quality_missing_reason"],
+      "properties": {"missing_fields": {"const": []}},
+      "if": {"properties": {"status": {"const": "READY"}}},
+      "then": {"properties": {"execution_ready": {"const": "YES"}, "packet_quality_qualified": {"const": true}, "quality_missing_reason": {"const": null}}},
+      "else": {"properties": {"execution_ready": {"const": "NO_PACKET_QUALITY"}, "packet_quality_qualified": {"const": false}, "quality_missing_reason": {"const": "NO_QUALIFICATION_EVIDENCE"}}}
+    }
   }]
 }

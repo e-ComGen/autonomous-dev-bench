@@ -190,12 +190,11 @@ def import_qualification(source_repo: str | Path, benchmark_repo: str | Path, ta
         'buggy_head': plan['benchmark_head'], 'buggy_tree': plan['benchmark_tree'],
         'task_text': plan['task_text'], 'task_hash': plan['task_sha256'],
         'evaluation_plan': campaign_plan, 'evaluation_plan_digest': plan_digest(campaign_plan),
-        'run_order_seed': run_order_seed, 'contexts': contexts or {},
+        'run_order_seed': run_order_seed, 'contexts': {},
         'execution': dict(DEFAULT_EXECUTION), 'model_executed': False}
     _write(output / 'campaign-manifest.json', manifest)
     if contexts is not None:
         _check_packet_privacy(contexts, output, qualification)
-        validate_manifest(output / 'campaign-manifest.json')
     refs = {'repo': str(source_repo), 'head': contract.head, 'tree': contract.tree,
             'plan_path': f'{SOURCE_PREFIX}/{task_id}/evaluation-plan.json',
             'readiness_path': f'{SOURCE_PREFIX}/readiness.json'}
@@ -216,11 +215,14 @@ def import_qualification(source_repo: str | Path, benchmark_repo: str | Path, ta
         'translated_evaluator_identities': [{'id': r['id'], 'category': r['category'], 'required': r['required'], 'identity': r['identity']} for r in rows],
         'campaign_manifest': manifest, 'model_visible_manifest': public,
         'run_order': run_order(run_order_seed), 'source_import_valid': True,
-        'execution_ready': 'YES' if contexts is not None else 'NO_MISSING_PACKETS',
-        'status': 'READY' if contexts is not None else 'IMPORTED_NOT_EXECUTABLE',
-        'missing_fields': [] if contexts is not None else ['A_PACKET_PATH', 'A_PACKET_HASH', 'B_PACKET_PATH', 'B_PACKET_HASH']}
+        'execution_ready': 'NO_MISSING_PACKETS',
+        'status': 'IMPORTED_NOT_EXECUTABLE',
+        'missing_fields': ['A_PACKET_PATH', 'A_PACKET_HASH', 'B_PACKET_PATH', 'B_PACKET_HASH']}
     envelope['import_binding_digest'] = _binding(envelope)
     _write(output / 'import.json', envelope)
+    if contexts is not None:
+        from .packet_import import attach_context_set
+        return attach_context_set(output, contexts, packet_version='1')
     return envelope
 
 
@@ -241,11 +243,10 @@ def validate_import(bundle_dir: str | Path, *, contract: SourceContract = FROZEN
         if manifest['contexts']:
             qualification = json.loads((rebuilt / 'private/qualification.json').read_text(encoding='utf-8'))
             _check_packet_privacy(manifest['contexts'], bundle, qualification)
-            expected['campaign_manifest']['contexts'] = manifest['contexts']
-            expected['campaign_manifest_digest'] = plan_digest(expected['campaign_manifest'])
-            expected.update(execution_ready='YES', status='READY', missing_fields=[])
-            expected['import_binding_digest'] = _binding(expected)
-            validate_manifest(bundle / 'campaign-manifest.json')
+            from .packet_import import project_packet_envelope
+            expected = project_packet_envelope(expected, bundle, manifest['contexts'])
+            from .manifest import _validate
+            _validate(bundle / 'campaign-manifest.json', require_packet_quality=False)
         _require(envelope == expected, 'import binding or translated manifest changed')
         for path in rebuilt.rglob('*'):
             if path.is_file() and path.name not in ('import.json', 'campaign-manifest.json'):
@@ -258,7 +259,9 @@ def validate_import(bundle_dir: str | Path, *, contract: SourceContract = FROZEN
 def attach_packets(bundle_dir: str | Path, contexts: dict[str, Any], output_dir: str | Path,
                    *, contract: SourceContract = FROZEN_SOURCE) -> dict[str, Any]:
     """Bind externally built packets into a fresh import, validating real bytes."""
-    envelope = validate_import(bundle_dir, contract=contract)
-    manifest = envelope['campaign_manifest']
-    return import_qualification(envelope['source_refs']['repo'], manifest['repo'], envelope['task_id'],
-                                output_dir, run_order_seed=manifest['run_order_seed'], contexts=contexts, contract=contract)
+    from .packet_import import attach_context_set, copy_bundle_blocked
+    validate_import(bundle_dir, contract=contract)
+    _require(not Path(output_dir).exists(), 'import destination already exists')
+    copy_bundle_blocked(Path(bundle_dir), Path(output_dir))
+    result = attach_context_set(Path(output_dir), contexts, packet_version='1')
+    return validate_import(output_dir, contract=contract)
