@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Qualification-to-campaign import envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["importer_version", "source_schema_version", "target_schema_version", "task_id", "task_hash", "source_refs", "source_evaluation_plan_digest", "campaign_manifest_digest", "import_binding_digest", "translated_evaluator_identities", "campaign_manifest", "model_visible_manifest", "run_order", "source_import_valid", "execution_ready", "status", "missing_fields"],
+  "properties": {
+    "importer_version": {"const": "qualification-to-campaign-v1.0.0"},
+    "source_schema_version": {"const": "qualification-v1"},
+    "target_schema_version": {"const": "campaign-schema-v1"},
+    "task_id": {"type": "string", "minLength": 1},
+    "task_hash": {"$ref": "#/$defs/digest"},
+    "source_evaluation_plan_digest": {"$ref": "#/$defs/digest"},
+    "campaign_manifest_digest": {"$ref": "#/$defs/digest"},
+    "import_binding_digest": {"$ref": "#/$defs/digest"},
+    "source_refs": {"type": "object"},
+    "translated_evaluator_identities": {"type": "array", "minItems": 1},
+    "campaign_manifest": {"type": "object"},
+    "model_visible_manifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "buggy_head", "buggy_tree", "task_text", "task_hash"],
+      "properties": {
+        "task_id": {"type": "string"}, "buggy_head": {"type": "string"},
+        "buggy_tree": {"type": "string"}, "task_text": {"type": "string"},
+        "task_hash": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "run_order": {"enum": [["A", "B"], ["B", "A"]]},
+    "source_import_valid": {"const": true},
+    "execution_ready": {"enum": ["YES", "NO_MISSING_PACKETS"]},
+    "status": {"enum": ["READY", "IMPORTED_NOT_EXECUTABLE"]},
+    "missing_fields": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "IMPORTED_NOT_EXECUTABLE"}}},
+    "then": {"properties": {
+      "execution_ready": {"const": "NO_MISSING_PACKETS"},
+      "missing_fields": {"const": ["A_PACKET_PATH", "A_PACKET_HASH", "B_PACKET_PATH", "B_PACKET_HASH"]}
+    }},
+    "else": {"properties": {"execution_ready": {"const": "YES"}, "missing_fields": {"const": []}}}
+  }]
+}

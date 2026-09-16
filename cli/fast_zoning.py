@@ -9,6 +9,7 @@ from typing import Sequence
 from benchmark_core.fast_zoning.manifest import InvalidManifest, validate_manifest
 from benchmark_core.fast_zoning.runner import execute_pair, plan_campaign
 from benchmark_core.fast_zoning.results import campaign_summary
+from benchmark_core.fast_zoning.qualification_import import attach_packets, import_qualification, validate_import
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -30,9 +31,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     execute.add_argument("--dry-run", action="store_true")
     summarize = actions.add_parser("summarize")
     summarize.add_argument("campaign_dir", type=Path)
+    source_import = actions.add_parser("import-qualification")
+    source_import.add_argument("source_repo", type=Path)
+    source_import.add_argument("benchmark_repo", type=Path)
+    source_import.add_argument("task_id")
+    source_import.add_argument("--bundle-dir", type=Path, required=True)
+    source_import.add_argument("--run-order-seed", required=True)
+    source_import.add_argument("--output", type=Path)
+    validate_import_parser = actions.add_parser("validate-import")
+    validate_import_parser.add_argument("bundle_dir", type=Path)
+    validate_import_parser.add_argument("--output", type=Path)
+    bind = actions.add_parser("bind-packets")
+    bind.add_argument("bundle_dir", type=Path)
+    bind.add_argument("contexts", type=Path)
+    bind.add_argument("--bundle-output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.action == "validate":
+        if args.action == "import-qualification":
+            result = import_qualification(args.source_repo, args.benchmark_repo, args.task_id,
+                                          args.bundle_dir, run_order_seed=args.run_order_seed)
+        elif args.action == "validate-import":
+            result = validate_import(args.bundle_dir)
+        elif args.action == "bind-packets":
+            result = attach_packets(args.bundle_dir, json.loads(args.contexts.read_text(encoding="utf-8")),
+                                    args.bundle_output)
+        elif args.action == "validate":
             manifest = validate_manifest(args.manifest)
             result = {"task_id": manifest["task_id"], "TASK_STATUS": "VALIDATED", "MODEL_EXECUTED": False}
         elif args.action == "plan":

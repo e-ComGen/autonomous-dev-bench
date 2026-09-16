@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Qualification packet build request v1 (no model execution)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "buggy_head", "buggy_tree", "task_text", "task_hash", "target_hints", "source_qualification_refs", "policies", "expected_outputs", "output_schema", "model_execution_allowed"],
+  "properties": {
+    "schema_version": {"const": "packet-build-request-v1"},
+    "task_id": {"type": "string", "minLength": 1},
+    "buggy_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "buggy_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "task_text": {"type": "string", "minLength": 1},
+    "task_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "target_hints": {"const": []},
+    "model_execution_allowed": {"const": false},
+    "output_schema": {"type": "object"},
+    "source_qualification_refs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repo", "head", "tree", "plan_path", "readiness_path", "source_evaluation_plan_digest"],
+      "properties": {
+        "repo": {"type": "string"},
+        "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "plan_path": {"type": "string"},
+        "readiness_path": {"type": "string"},
+        "source_evaluation_plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "policies": {
+      "type": "object", "additionalProperties": false, "required": ["A", "B"],
+      "properties": {
+        "A": {"const": "normal non-zoned ContextPlanner"},
+        "B": {"const": "real Auto-Zoning -> zone-aware ContextPlanner"}
+      }
+    },
+    "expected_outputs": {
+      "const": {
+        "A": ["packet_path", "packet_hash", "packet_bytes", "source_item_count", "source_bytes"],
+        "B": ["packet_path", "packet_hash", "packet_bytes", "source_item_count", "source_bytes", "zoning"]
+      }
+    }
+  }
+}

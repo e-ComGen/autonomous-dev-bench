@@ -132,6 +132,40 @@ are pinned appropriately; hashing one script is not proof of its entire environm
 Never point an evaluator command at an unqualified overnight proposal. The producer
 must first validate buggy failure and known-fix success under its complete plan.
 
+## Qualification import bridge
+
+The explicit `qualification-v1` to `campaign-schema-v1` bridge preserves the
+source evaluation digest. It does not claim that a translated representation has
+the same bytes or hash. A separate campaign-manifest digest and import-binding
+digest bind source provenance, task hash, evaluator identities and importer version.
+
+Importer version: `qualification-to-campaign-v1.0.0`. Machine contracts:
+[import envelope](../packages/benchmark_core/benchmark_core/fast_zoning/qualification-import.v1.schema.json),
+[packet-build request](../packages/benchmark_core/benchmark_core/fast_zoning/packet-build-request.v1.schema.json),
+and [packet-build output](../packages/benchmark_core/benchmark_core/fast_zoning/packet-build-output.v1.schema.json).
+
+```text
+python -m cli.fast_zoning campaign import-qualification SOURCE_REPO BENCHMARK_REPO ID-01 --bundle-dir imports/ID-01 --run-order-seed expansion-v1-20260916:ID-01
+python -m cli.fast_zoning campaign validate-import imports/ID-01
+python -m cli.fast_zoning campaign bind-packets imports/ID-01 contexts.json --bundle-output imports/ID-01-ready
+```
+
+Import derives frozen status only from checked qualification evidence: ready,
+no model execution, known fix reset, correct source/task digests, valid evaluator
+artifacts, and exact clean/buggy snapshot bindings. All evaluator categories and
+required flags survive translation. Source qualification plans remain unchanged.
+
+Without real A/B packets the result is `IMPORTED_NOT_EXECUTABLE`, with valid source
+import and `EXECUTION_READY=NO_MISSING_PACKETS`. This is a valid intermediate state,
+not an executable campaign task. The emitted packet-build request delegates normal
+non-zoned and real zone-aware context construction to cache-harness-addon. This
+repository implements no additional planner and fabricates no packets.
+
+Binding verified packets creates a new bundle and runs the existing campaign
+validator. Hidden qualification data stays private; only the allowlisted public
+task and snapshot data enter the model-visible manifest and packet request.
+Neither import, validation, nor packet binding invokes OMP or a model.
+
 ## Morning inspection
 
 The campaign stores its identity, per-task snapshot, pair plan, seal and state.
