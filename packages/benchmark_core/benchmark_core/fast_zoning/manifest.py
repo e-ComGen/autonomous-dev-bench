@@ -67,6 +67,8 @@ def _validate(path, require_packet_quality=True):
         'evaluation_plan_digest', 'run_order_seed', 'contexts', 'execution', 'model_executed'}
     _require(required <= data.keys(), 'missing required manifest fields')
     _require(set(data) <= required | {'evaluator_only', 'campaign_id', 'packet_quality_gate'}, 'unknown manifest field or per-arm override')
+    lab_route = data['execution'].get('route') == 'LAB_HOST_ONLY'
+    _require(not (lab_route and 'packet_quality_gate' in data), 'LAB policies cannot reuse native packet quality admission')
     if 'packet_quality_gate' in data:
         from .packet_import import validate_quality_gate
         validate_quality_gate(data, path.parent, require_qualified=require_packet_quality)
@@ -77,8 +79,12 @@ def _validate(path, require_packet_quality=True):
     _require(isinstance(data['run_order_seed'], str) and bool(data['run_order_seed']), 'seed required')
     _require(isinstance(data['task_text'], str) and bool(data['task_text']), 'task text required')
     _require(digest_bytes(data['task_text'].encode()) == data['task_hash'], 'task hash mismatch')
-    _require(set(data['execution']) == set(DEFAULT_EXECUTION), 'execution config fields mismatch')
-    _require(data['execution'] == DEFAULT_EXECUTION, 'unqualified execution configuration')
+    if data['execution'].get('route') == 'LAB_HOST_ONLY':
+        from .lab_backend import validate_execution
+        data['execution'] = validate_execution(data['execution'], path.parent)
+    else:
+        _require(set(data['execution']) == set(DEFAULT_EXECUTION), 'execution config fields mismatch')
+        _require(data['execution'] == DEFAULT_EXECUTION, 'unqualified execution configuration')
     repo = (path.parent / data['repo']).resolve()
     for prefix in ('clean', 'buggy'):
         for suffix in ('head', 'tree'):
@@ -133,6 +139,9 @@ def _validate(path, require_packet_quality=True):
                 _require(type(context[field]) in (float,int) and context[field] >= 0, f'invalid {field}')
         context['packet_path'] = _artifact(path.parent, context['packet_path'], context['packet_hash'])
         packet = Path(context['packet_path']).read_bytes()
+        if lab_route:
+            _require(json.loads(packet) == {'context_policy': 'ordinary' if arm == 'A' else 'zone_preferred'},
+                     'LAB context packet must contain only the fixed arm context_policy')
         _require(len(packet) == context['packet_bytes'], 'packet size mismatch')
         visible = data['task_text'].encode() + packet
         _require(not any(needle in visible for needle in needles), 'known hidden/gold material in model packet')

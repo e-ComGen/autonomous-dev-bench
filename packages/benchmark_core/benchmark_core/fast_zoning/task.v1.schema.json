@@ -6,11 +6,21 @@
   "type": "object",
   "$defs": {
     "qualityArtifact": {
-      "type": "object", "additionalProperties": false,
-      "required": ["path", "sha256"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
       "properties": {
-        "path": {"type": "string", "minLength": 1},
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     }
   },
@@ -36,10 +46,24 @@
     "packet_quality_gate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["packet_set", "quality_evidence"],
+      "required": [
+        "packet_set",
+        "quality_evidence"
+      ],
       "properties": {
-        "packet_set": {"$ref": "#/$defs/qualityArtifact"},
-        "quality_evidence": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/qualityArtifact"}]}
+        "packet_set": {
+          "$ref": "#/$defs/qualityArtifact"
+        },
+        "quality_evidence": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/qualityArtifact"
+            }
+          ]
+        }
       }
     },
     "schema_version": {
@@ -353,14 +377,83 @@
       }
     },
     "execution": {
-      "const": {
-        "omp_executable": "C:/Users/Venya/.bun/bin/omp.exe",
-        "omp_version": "18.1.14",
-        "route": "CLI_JSON",
-        "model": "alibaba-token-plan/deepseek-v4-pro",
-        "tools": "read,edit,write",
-        "max_time": "10m"
-      }
+      "oneOf": [
+        {
+          "const": {
+            "omp_executable": "C:/Users/Venya/.bun/bin/omp.exe",
+            "omp_version": "18.1.14",
+            "route": "CLI_JSON",
+            "model": "alibaba-token-plan/deepseek-v4-pro",
+            "tools": "read,edit,write",
+            "max_time": "10m"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "route",
+            "provider",
+            "model",
+            "thinking",
+            "native_tools",
+            "lab_root",
+            "python_executable",
+            "dependency_manifest",
+            "config",
+            "dsn_env_keys"
+          ],
+          "properties": {
+            "route": {
+              "const": "LAB_HOST_ONLY"
+            },
+            "provider": {
+              "const": "deepseek"
+            },
+            "model": {
+              "const": "deepseek-v4-flash"
+            },
+            "thinking": {
+              "const": "EXISTING_PROVIDER_DEFAULT"
+            },
+            "native_tools": {
+              "const": []
+            },
+            "lab_root": {
+              "type": "string",
+              "minLength": 1
+            },
+            "python_executable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dependency_manifest": {
+              "$ref": "#/$defs/qualityArtifact"
+            },
+            "config": {
+              "$ref": "#/$defs/qualityArtifact"
+            },
+            "dsn_env_keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "A",
+                "B"
+              ],
+              "properties": {
+                "A": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "B": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "model_executed": {
       "const": false
