@@ -10,12 +10,39 @@ import sys
 from typing import Protocol
 
 from .manifest import InvalidManifest, digest_bytes, plan_digest
+from .storage import write_json
 
 
 class LabBackend(Protocol):
     def __call__(self, *, manifest: dict, plan: dict, arm: str, arm_dir: Path) -> dict:
         """Execute one fresh LAB arm and validate its evidence projection."""
         ...
+
+
+def export_observability(*, manifest: dict, directory: Path, paired: bool = False) -> dict:
+    """Best-effort derived export after durable primary results; never retry execution.
+
+    Diagnostics intentionally omit exception text, paths and environment values.
+    An unavailable/mismatched exporter does not change the recorded experiment.
+    """
+    try:
+        config = manifest['execution']
+        if Path(sys.executable).resolve() != Path(config['python_executable']).resolve():
+            raise InvalidManifest('observability interpreter mismatch')
+        module = import_module('adcp_lab.runtime.ab_profile' if paired else 'adcp_lab.runtime.run_profile')
+        if not Path(module.__file__).resolve().is_relative_to(Path(config['lab_root']).resolve()):
+            raise InvalidManifest('observability module outside bound LAB')
+        exporter = module.export_ab_profile if paired else module.export_run_profile
+        exporter(directory)
+        return {'status': 'EXPORTED'}
+    except Exception as exc:
+        result = {'status': 'EXPORT_ERROR', 'error_type': type(exc).__name__,
+                  'stage': 'pair' if paired else 'arm', 'primary_result_unchanged': True}
+        try:
+            write_json(directory / 'observability-export-error.json', result)
+        except OSError:
+            return {**result, 'diagnostic_persisted': False}
+        return {**result, 'diagnostic_persisted': True}
 
 
 def validate_execution(config: dict, base: Path) -> dict:

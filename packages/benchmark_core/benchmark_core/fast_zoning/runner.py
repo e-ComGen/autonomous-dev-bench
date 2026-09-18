@@ -12,7 +12,7 @@ from .storage import write_json, state, claim
 from .evaluation import run_evaluators
 from .events import parse_jsonl
 from .results import qualify_arm, paired_summary
-from .lab_backend import LabBackend, production_backend, run_arm
+from .lab_backend import LabBackend, production_backend, run_arm, export_observability
 
 
 def command(config, workspace, packet):
@@ -230,4 +230,8 @@ def execute_pair(pair_dir, authorized=False, executor=None, *, lab_backend: LabB
     model_executed = (True if any(row['model_executed'] is True for row in metrics.values()) else
                       None if any(row['model_executed'] is None for row in metrics.values()) else False)
     state(pair_dir,summary['status'],arm=None,model_executed=model_executed)
+    if lab_route:
+        for arm in plan['run_order']:
+            export_observability(manifest=manifest, directory=pair_dir / arm)
+        export_observability(manifest=manifest, directory=pair_dir, paired=True)
     return summary

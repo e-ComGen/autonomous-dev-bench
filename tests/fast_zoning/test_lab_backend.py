@@ -9,6 +9,8 @@ from benchmark_core.fast_zoning.manifest import InvalidManifest, digest_bytes, p
 from benchmark_core.fast_zoning.results import campaign_summary
 from benchmark_core.fast_zoning.runner import execute_pair, plan_campaign
 import benchmark_core.fast_zoning.runner as runner
+import benchmark_core.fast_zoning.lab_backend as binding
+from types import SimpleNamespace
 
 
 @pytest.fixture
@@ -39,6 +41,80 @@ def result_for(manifest, treatment):
                            'results': {row['id']: {'status': 'PASS'} for row in manifest['_evaluators']}},
             'patch_valid': True, 'lab_evidence': {'projection_validated': True, 'integrity_status': 'PASS'},
             'treatment': treatment, 'treatment_digest': plan_digest(treatment)}
+
+
+def test_observability_follows_persistence_without_changing_primary(lab_manifest, tmp_path, monkeypatch):
+    plan = plan_campaign(lab_manifest, tmp_path / 'campaign', 'observed-pair')
+    events = []
+    def export(directory):
+        if directory.name in ('A', 'B'):
+            assert (directory / 'metrics.json').is_file()
+            events.append(directory.name)
+        else:
+            assert (directory / 'paired-summary.json').is_file()
+            assert json.loads((directory / 'state.json').read_text())['status'] == 'COMPLETED'
+            events.append('pair')
+        raise RuntimeError('secret=must-not-leak')
+    module = SimpleNamespace(__file__=str(tmp_path / 'exporter.py'),
+                             export_run_profile=export, export_ab_profile=export)
+    monkeypatch.setattr(binding, 'import_module', lambda name: module)
+    calls = []
+    def backend(**kwargs):
+        calls.append(kwargs['arm'])
+        return result_for(kwargs['manifest'], {'policy': kwargs['arm']})
+    result = execute_pair(plan['pair_dir'], authorized=True, lab_backend=backend)
+    assert result['status'] == 'COMPLETED'
+    assert calls == plan['run_order']
+    assert events == [*plan['run_order'], 'pair']
+    for directory in [Path(plan['pair_dir']), *(Path(plan['pair_dir']) / arm for arm in ('A', 'B'))]:
+        raw = (directory / 'observability-export-error.json').read_text()
+        assert 'must-not-leak' not in raw
+        assert json.loads(raw)['error_type'] == 'RuntimeError'
+
+
+def test_observability_rejects_foreign_module_without_calling_it(tmp_path, monkeypatch):
+    def forbidden(*args):
+        pytest.fail('foreign exporter executed')
+    monkeypatch.setattr(binding, 'import_module', lambda name: SimpleNamespace(
+        __file__=str(tmp_path.parent / 'foreign.py'), export_run_profile=forbidden))
+    result = binding.export_observability(manifest={'execution': {
+        'python_executable': sys.executable, 'lab_root': str(tmp_path)}}, directory=tmp_path)
+    assert result['status'] == 'EXPORT_ERROR'
+    assert result['error_type'] == 'InvalidManifest'
+
+
+def test_arm_exports_bind_terminal_state_and_rebuild_identically(lab_manifest, tmp_path, monkeypatch):
+    plan = plan_campaign(lab_manifest, tmp_path / 'campaign', 'terminal-profile')
+    pair_dir = Path(plan['pair_dir'])
+    exports = []
+    def arm_export(directory):
+        state_bytes = (directory.parent / 'state.json').read_bytes()
+        payload = {'state_sha256': digest_bytes(state_bytes),
+                   'status': json.loads(state_bytes)['status'],
+                   'metrics_sha256': digest_bytes((directory / 'metrics.json').read_bytes())}
+        output = directory / 'run-profile.json'
+        if output.exists():
+            assert json.loads(output.read_text()) == payload
+        else:
+            output.write_text(json.dumps(payload))
+        exports.append(directory.name)
+        return payload
+    def pair_export(directory):
+        assert all((directory / arm / 'run-profile.json').is_file() for arm in ('A', 'B'))
+        exports.append('pair')
+    monkeypatch.setattr(binding, 'import_module', lambda name: SimpleNamespace(
+        __file__=str(tmp_path / 'exporter.py'), export_run_profile=arm_export, export_ab_profile=pair_export))
+    result = execute_pair(pair_dir, authorized=True, lab_backend=lambda **kwargs:
+                          result_for(kwargs['manifest'], {'policy': kwargs['arm']}))
+    assert result['status'] == 'COMPLETED'
+    assert exports == [*plan['run_order'], 'pair']
+    persisted = {path: path.read_bytes() for path in pair_dir.rglob('*.json')}
+    for arm in ('A', 'B'):
+        saved = json.loads((pair_dir / arm / 'run-profile.json').read_text())
+        assert saved['status'] == 'COMPLETED'
+        assert saved['state_sha256'] == digest_bytes((pair_dir / 'state.json').read_bytes())
+        assert arm_export(pair_dir / arm) == saved
+    assert all(path.read_bytes() == value for path, value in persisted.items())
 
 
 @pytest.mark.parametrize('field,value', [('route', 'UNKNOWN'), ('native_tools', ['read']),
@@ -147,7 +223,9 @@ def test_missing_production_hook_fails_both_arms_without_native_fallback(lab_man
     plan = plan_campaign(lab_manifest, tmp_path / 'campaign', 'pair-01')
     assert calls == []
     result = execute_pair(plan['pair_dir'], authorized=True)
-    assert calls == ['adcp_lab.runtime.fast_ab'] * 2
+    assert calls == ['adcp_lab.runtime.fast_ab', 'adcp_lab.runtime.fast_ab',
+                     'adcp_lab.runtime.run_profile', 'adcp_lab.runtime.run_profile',
+                     'adcp_lab.runtime.ab_profile']
     assert result['status'] == 'INFRA_FAILURE'
     assert all(result['primary_result'][arm]['model_executed'] is None for arm in ('A', 'B'))
     state = json.loads((Path(plan['pair_dir']) / 'state.json').read_text())
