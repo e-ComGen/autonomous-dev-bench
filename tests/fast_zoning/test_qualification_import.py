@@ -203,7 +203,9 @@ def test_real_packet_bytes_bind_without_model_process(qualification, monkeypatch
 
 def test_historical_pair_fixtures_remain_frozen():
     fixture = Path(__file__).parent / "fixtures/pairs123.json"
-    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "534e2a9e8734c1bdfcc1b0dfe1cdd1a5794e5d00c6ec85c995135e5ccb94f58b"
+    # .gitattributes requires LF; bind the unchanged Git blob, not the old
+    # machine's CRLF checkout representation. Fixture contents remain frozen.
+    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "766a65c0a0ad7b12ce0de043f5e975036def5151dfce4de6e2110cf947c87eab"
 
 
 def test_failed_inline_packet_import_cannot_publish_executable_manifest(qualification):

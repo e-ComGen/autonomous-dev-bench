@@ -12,6 +12,7 @@ from .storage import write_json, state, claim
 from .evaluation import run_evaluators
 from .events import parse_jsonl
 from .results import qualify_arm, paired_summary
+from .lab_backend import LabBackend, production_backend, run_arm
 
 
 def command(config, workspace, packet):
@@ -41,22 +42,26 @@ def plan_campaign(manifest_path, campaign_dir, pair_run_id):
         write_json(pair_dir / 'task.json', manifest)
         write_json(campaign_dir / 'manifest.json', {'schema_version':1,'campaign_id':campaign_dir.name})
         arms = {}
+        lab_route = manifest['execution']['route'] == 'LAB_HOST_ONLY'
         scaffold = files('benchmark_core.fast_zoning').joinpath('instructions.md').read_bytes()
         for arm in ('A','B'):
             arm_dir = pair_dir / arm
             arm_dir.mkdir()
-            workspace = clone_snapshot(manifest['repo'], arm_dir / 'workspace',
-                                       manifest['buggy_head'], manifest['buggy_tree'])
+            workspace = (Path(manifest['repo']) if lab_route else
+                         clone_snapshot(manifest['repo'], arm_dir / 'workspace',
+                                        manifest['buggy_head'], manifest['buggy_tree']))
             packet = Path(manifest['contexts'][arm]['packet_path']).read_bytes()
             (arm_dir / 'context.md').write_bytes(packet)
             # Both envelopes have identical scaffold/task; context is the sole variable.
             execution_packet = scaffold + b'\n# Task\n\n' + manifest['task_text'].encode() + b'\n\n# Context\n\n' + packet
+            if lab_route:
+                execution_packet = packet
             packet_path = arm_dir / 'packet.md'
             packet_path.write_bytes(execution_packet)
             arms[arm] = {'workspace':str(workspace), 'packet_path':str(packet_path),
                 'packet_hash':digest_bytes(execution_packet), 'context_hash':digest_bytes(packet),
                 'task_hash':manifest['task_hash'], 'evaluation_plan_digest':manifest['evaluation_plan_digest'],
-                'argv':command(manifest['execution'],workspace,packet_path)}
+                'argv':None if lab_route else command(manifest['execution'],workspace,packet_path)}
         plan = {'schema_version':1,'campaign_id':campaign_dir.name,'task_id':manifest['task_id'],
             'pair_run_id':pair_run_id,'pair_dir':str(pair_dir),'run_order':manifest['_run_order'],
             'run_order_seed':manifest['run_order_seed'],'evaluation_plan_digest':manifest['evaluation_plan_digest'],
@@ -100,7 +105,7 @@ def _guard(pair_dir, plan, seal, manifest, arm=None):
         verify_source(plan['arms'][arm]['workspace'],manifest['buggy_head'],manifest['buggy_tree'])
 
 
-def execute_pair(pair_dir, authorized=False, executor=None):
+def execute_pair(pair_dir, authorized=False, executor=None, *, lab_backend: LabBackend | None = None):
     if not authorized:
         raise PermissionError('real execution requires explicit authorization')
     pair_dir = Path(pair_dir).resolve()
@@ -112,6 +117,11 @@ def execute_pair(pair_dir, authorized=False, executor=None):
         if plan_digest(plan) != seal['plan_hash'] or digest_bytes((pair_dir/'task.json').read_bytes()) != seal['task_hash']:
             raise InvalidManifest('frozen plan/task changed')
         manifest = json.loads((pair_dir / 'task.json').read_text())
+        lab_route = manifest['execution']['route'] == 'LAB_HOST_ONLY'
+        if lab_route and executor is not None:
+            raise InvalidManifest('executor hook is prohibited for LAB_HOST_ONLY')
+        if not lab_route and lab_backend is not None:
+            raise InvalidManifest('lab_backend requires LAB_HOST_ONLY')
         checked = validate_manifest(manifest['_manifest_path'])
         if checked['_manifest_hash'] != plan['manifest_hash']:
             raise InvalidManifest('source manifest changed')
@@ -128,7 +138,7 @@ def execute_pair(pair_dir, authorized=False, executor=None):
     environment_digest = plan_digest(environment)
     executable_hash = None
     # Version verification belongs only to authorized real execution, never dry-run.
-    if executor is None:
+    if executor is None and not lab_route:
         try:
             executable_hash = digest_bytes(Path(manifest['execution']['omp_executable']).read_bytes())
             version = subprocess.run([manifest['execution']['omp_executable'],'--version'],
@@ -157,53 +167,67 @@ def execute_pair(pair_dir, authorized=False, executor=None):
             raise InvalidManifest(str(exc)) from exc
         state(pair_dir,'RUNNING_'+arm,arm=arm)
         claim(arm_dir/'invocation.claim')
-        (arm_dir/'raw.jsonl').touch()
-        (arm_dir/'stderr.log').touch()
-        try:
-            process = execution(item['argv'],item['workspace'],arm_dir/'raw.jsonl',arm_dir/'stderr.log',dict(environment))
-        except Exception as exc:
-            process = {'exit_code':None,'model_wall_time':time.perf_counter()-start,'error':str(exc)}
-        parsed = parse_jsonl((arm_dir/'raw.jsonl').read_bytes(),process.get('exit_code'),Path(item['workspace']))
-        parsed.update(process)
-        context = manifest['contexts'][arm]
-        parsed.update(model_executed=parsed['model_turns'] > 0, invocation_attempted=True,
-            retries=0, packet_bytes=context['packet_bytes'],
-            source_bytes=context['source_bytes'],source_item_count=context['source_item_count'],
-            zoning_time=context.get('zoning_time'),planning_time=context.get('planning_time'),
-            preprocessing_time=context.get('preprocessing_time'),total_cost=None,quota_usage=None)
-        patch_valid = None
-        evaluation = {'evaluation_plan_digest':manifest['evaluation_plan_digest'],'results':{}}
-        state(pair_dir,'EVALUATING',arm=arm)
-        try:
-            patch = capture_patch(item['workspace'],manifest['buggy_head'],arm_dir)
-            parsed.update(patch)
-            evaluation_workspace = clone_snapshot(manifest['repo'],arm_dir/'evaluation-workspace',
-                manifest['buggy_head'],manifest['buggy_tree'])
+        if lab_route:
+            state(pair_dir, 'EVALUATING', arm=arm)
+            parsed, evaluation, patch_valid = run_arm(lab_backend or production_backend,
+                manifest=manifest, plan=plan, arm=arm, arm_dir=arm_dir)
+            write_json(arm_dir/'lab-evidence.json', parsed.get('lab_evidence', {'error': parsed.get('error')}))
+        else:
+            (arm_dir/'raw.jsonl').touch()
+            (arm_dir/'stderr.log').touch()
             try:
-                apply_patch(evaluation_workspace,arm_dir/'patch.diff')
-                patch_valid = True
-            except subprocess.CalledProcessError:
-                patch_valid = False
-                raise
-            evaluation = run_evaluators(manifest,evaluation_workspace,arm_dir/'evaluators')
-        except Exception as exc:
-            evaluation = {'evaluation_plan_digest':manifest['evaluation_plan_digest'],
-                'results':{row['id']:{'status':'ERROR','error':str(exc)} for row in manifest['_evaluators']},
-                'error':str(exc)}
+                process = execution(item['argv'],item['workspace'],arm_dir/'raw.jsonl',arm_dir/'stderr.log',dict(environment))
+            except Exception as exc:
+                process = {'exit_code':None,'model_wall_time':time.perf_counter()-start,'error':str(exc)}
+            parsed = parse_jsonl((arm_dir/'raw.jsonl').read_bytes(),process.get('exit_code'),Path(item['workspace']))
+            parsed.update(process)
+            patch_valid = None
+            evaluation = {'evaluation_plan_digest':manifest['evaluation_plan_digest'],'results':{}}
+            state(pair_dir,'EVALUATING',arm=arm)
+            try:
+                patch = capture_patch(item['workspace'],manifest['buggy_head'],arm_dir)
+                parsed.update(patch)
+                evaluation_workspace = clone_snapshot(manifest['repo'],arm_dir/'evaluation-workspace',
+                    manifest['buggy_head'],manifest['buggy_tree'])
+                try:
+                    apply_patch(evaluation_workspace,arm_dir/'patch.diff')
+                    patch_valid = True
+                except subprocess.CalledProcessError:
+                    patch_valid = False
+                    raise
+                evaluation = run_evaluators(manifest,evaluation_workspace,arm_dir/'evaluators')
+            except Exception as exc:
+                evaluation = {'evaluation_plan_digest':manifest['evaluation_plan_digest'],
+                    'results':{row['id']:{'status':'ERROR','error':str(exc)} for row in manifest['_evaluators']},
+                    'error':str(exc)}
+        context = manifest['contexts'][arm]
+        parsed.update(invocation_attempted=True, retries=0)
+        if lab_route:
+            parsed['policy_packet_bytes'] = context['packet_bytes']
+            for field in ('packet_bytes', 'source_bytes', 'source_item_count', 'total_wall_time'):
+                parsed.setdefault(field, None)
+        else:
+            parsed.update(model_executed=parsed['model_turns'] > 0, packet_bytes=context['packet_bytes'],
+                source_bytes=context['source_bytes'],source_item_count=context['source_item_count'],
+                zoning_time=context.get('zoning_time'),planning_time=context.get('planning_time'),
+                preprocessing_time=context.get('preprocessing_time'),total_cost=None,quota_usage=None)
         write_json(arm_dir/'evaluation.json',evaluation)
         parsed['execution_and_evaluation_wall_time'] = time.perf_counter()-start
-        parsed['total_wall_time'] = (parsed['execution_and_evaluation_wall_time'] + context['preprocessing_time']
-                                    if context.get('preprocessing_time') is not None else None)
+        if not lab_route:
+            parsed['total_wall_time'] = (parsed['execution_and_evaluation_wall_time'] + context['preprocessing_time']
+                                        if context.get('preprocessing_time') is not None else None)
         qualified = qualify_arm({**manifest['evaluation_plan'],'evaluation_plan_digest':manifest['evaluation_plan_digest']},
                                 evaluation,parsed,patch_valid=patch_valid)
         metrics[arm] = qualified
         write_json(arm_dir/'metrics.json',qualified)
-        # Both terminal JSON and exit code must prove process success.
+        # The selected backend must explicitly prove execution success.
         process_ok = parsed.get('execution_success') is True
         infra = infra or not process_ok or patch_valid is not True or any(row['status']=='ERROR' for row in evaluation['results'].values())
     summary = paired_summary({**manifest['evaluation_plan'],'evaluation_plan_digest':manifest['evaluation_plan_digest']},metrics['A'],metrics['B'])
     summary.update(pair_run_id=plan['pair_run_id'],task_id=plan['task_id'],campaign_id=plan['campaign_id'],
                    status='INFRA_FAILURE' if infra else 'COMPLETED')
     write_json(pair_dir/'paired-summary.json',summary)
-    state(pair_dir,summary['status'],arm=None,model_executed=any(row['model_executed'] for row in metrics.values()))
+    model_executed = (True if any(row['model_executed'] is True for row in metrics.values()) else
+                      None if any(row['model_executed'] is None for row in metrics.values()) else False)
+    state(pair_dir,summary['status'],arm=None,model_executed=model_executed)
     return summary

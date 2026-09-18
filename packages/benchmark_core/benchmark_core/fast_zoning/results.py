@@ -64,8 +64,11 @@ def paired_summary(plan, a, b):
     digest = plan.get("evaluation_plan_digest")
     eligible_plan = bool(digest) and plan.get("phase") == "PREDECLARED" and all(arm.get("evaluation_plan_digest") == digest and arm.get("evaluation_phase") == "PREDECLARED" for arm in (a, b))
     infra = any(arm.get("execution_success") is not True for arm in (a, b))
+    lab_pair = any(arm.get('route') == 'LAB_HOST_ONLY' for arm in (a, b))
+    treatment_distinct = (not lab_pair or (all(arm.get('treatment_digest') for arm in (a, b))
+                                          and a['treatment_digest'] != b['treatment_digest']))
     quality = "INCONCLUSIVE"
-    if eligible_plan and not infra:
+    if eligible_plan and not infra and treatment_distinct:
         quality = {("YES", "YES"): QUALITIES[2], ("YES", "NO"): "A_BETTER", ("NO", "YES"): "B_BETTER", ("NO", "NO"): "BOTH_FAIL"}.get((a.get("semantic_success"), b.get("semantic_success")), quality)
     equal = quality == QUALITIES[2]
     resources = {"equal_quality_cost_comparison": "AVAILABLE" if equal else "NOT_AVAILABLE",
@@ -74,11 +77,13 @@ def paired_summary(plan, a, b):
         av, bv = a.get(field), b.get(field)
         resources["raw_differences_b_minus_a"][field] = bv - av if _numeric(av) and _numeric(bv) else None
     av, bv = a.get("provider_total_tokens"), b.get("provider_total_tokens")
-    if _numeric(av) and _numeric(bv) and av > 0 and bv >= 0:
+    if treatment_distinct and _numeric(av) and _numeric(bv) and av > 0 and bv >= 0:
         resources["token_saving_b_vs_a"] = 1 - bv / av
         if equal:
             resources["equal_quality_token_saving"] = resources["token_saving_b_vs_a"]
     return {"evaluation_plan_digest": digest, "status": "INFRA_FAILURE" if infra else "COMPLETED",
+            **({'comparison_eligible': bool(treatment_distinct),
+                'comparison_exclusion_reason': None if treatment_distinct else 'NO_DISTINCT_TREATMENT'} if lab_pair else {}),
             "primary_result": {"A": deepcopy(a), "B": deepcopy(b), "quality_comparison": quality},
             "post_hoc_analysis": None, "quality_comparison": quality,
             "resource_comparison": resources}
@@ -99,6 +104,7 @@ def _distribution(values):
 def campaign_summary(pairs):
     """Each unique completed pair counts once. Duplicate IDs fail closed entirely."""
     counts = {"pairs_total": len(pairs), "pairs_valid": 0, "pairs_infra_failed": 0,
+              "pairs_excluded": 0,
               "pairs_invalid": 0, "pairs_incomplete": 0,
               "A_semantic_successes": 0, "B_semantic_successes": 0}
     counts.update({quality: 0 for quality in QUALITIES})
@@ -111,6 +117,9 @@ def campaign_summary(pairs):
             continue
         if pair.get("status") == "INFRA_FAILURE":
             counts["pairs_infra_failed"] += 1
+            continue
+        if pair.get('comparison_eligible') is False:
+            counts['pairs_excluded'] += 1
             continue
         if pair.get("status") in {"PLANNED", "VALIDATED", "READY", "PACKETS_IMPORTED", "RUNNING_A", "RUNNING_B", "EVALUATING"}:
             counts["pairs_incomplete"] += 1
