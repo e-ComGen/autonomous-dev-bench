@@ -72,7 +72,7 @@ def test_unknown_patch_and_unrecognized_evaluator_status_fail_closed():
 
 
 def fixture_reports():
-    fixture = json.loads((Path(__file__).parent / "fixtures/pairs123.json").read_text())
+    fixture = json.loads((Path(__file__).parent / "fixtures/pairs123.json").read_text(encoding="utf-8"))
     reports = []
     for pair in fixture["pairs"]:
         arms = [arm("PASS" if s == "YES" else "FAIL" if s == "NO" else "NOT_RUN", **pair[name]) for name,s in zip(("A","B"),pair["primary_semantic"])]
