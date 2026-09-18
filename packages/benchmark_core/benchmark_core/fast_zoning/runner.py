@@ -220,8 +220,6 @@ def execute_pair(pair_dir, authorized=False, executor=None, *, lab_backend: LabB
                                 evaluation,parsed,patch_valid=patch_valid)
         metrics[arm] = qualified
         write_json(arm_dir/'metrics.json',qualified)
-        if lab_route:
-            export_observability(manifest=manifest, directory=arm_dir)
         # The selected backend must explicitly prove execution success.
         process_ok = parsed.get('execution_success') is True
         infra = infra or not process_ok or patch_valid is not True or any(row['status']=='ERROR' for row in evaluation['results'].values())
@@ -233,5 +231,7 @@ def execute_pair(pair_dir, authorized=False, executor=None, *, lab_backend: LabB
                       None if any(row['model_executed'] is None for row in metrics.values()) else False)
     state(pair_dir,summary['status'],arm=None,model_executed=model_executed)
     if lab_route:
+        for arm in plan['run_order']:
+            export_observability(manifest=manifest, directory=pair_dir / arm)
         export_observability(manifest=manifest, directory=pair_dir, paired=True)
     return summary
