@@ -81,7 +81,7 @@ def parse_jsonl(raw: bytes, exit_code: int | None, workspace: Path | None = None
     result["provider_reported_cost"] = sum(costs) if costs and all(_number(c) for c in costs) else None
     reads, files = [], set()
     for tool in tools:
-        if tool["name"] != "read":
+        if tool["name"] not in ("read", "source.read"):
             continue
         args = tool["arguments"]
         raw_path = args.get("path", args.get("file_path"))
@@ -101,6 +101,7 @@ def parse_jsonl(raw: bytes, exit_code: int | None, workspace: Path | None = None
                   unique_files_read=len(files), exact_read_paths=reads, unique_read_paths=sorted(files),
                   tools=tools, stop_reasons=stops, parse_errors=errors,
                   exit_code=exit_code, terminal=terminal,
-                  execution_success=exit_code == 0 and terminal is True and not errors,
+                  execution_success=(exit_code == 0 and terminal is True and not errors
+                                     and (not stops or stops[-1] == "stop")),
                   total_cost=None, quota_usage=None)
     return result

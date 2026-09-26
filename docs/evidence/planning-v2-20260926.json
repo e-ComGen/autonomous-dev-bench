@@ -1,0 +1,25 @@
+{
+  "base": "211054277265b4507d81195766338cb208df794f",
+  "full_suite": "461 passed, 3 optional skips, 1 pre-existing warning",
+  "targeted_suite": "42 passed",
+  "test_result": {
+    "exit_code": 0,
+    "seconds": 284.03527230001055,
+    "changed_during_run": []
+  },
+  "source_inventory_sha256": "7f92e879fb45001430f6b40b57585ce41d9481fc431183b38be0065ec22ae7b8",
+  "tested_files": {
+    "packages/benchmark_core/benchmark_core/fast_zoning/events.py": "e6a38a653c04811729e24eb90c76b01a4c40c1b5a59d46a7c88bb1a1e36a1a94",
+    "packages/benchmark_core/benchmark_core/fast_zoning/planning.py": "f23e7c250a4c9500f3833b831f8e66e1bbcb33dcf2cce1dc20f163d60dedffe5",
+    "tests/fast_zoning/test_planning_contract.py": "3d51bffc7d22c4e644cc039ee36c632d02eb32a12297018ce225a532e08c4d15",
+    "tests/fast_zoning/test_product_accounting.py": "738b7acd0b7a3e479022b09d6b4cfb77ea1cbdde8913340a4becd2b06ee3c5d9"
+  },
+  "junit_sha256": "3e96c895231a51b03594f616e913226fe3d4fcb2acc7db93b1396b9b14b9b75a",
+  "build_artifacts": {
+    "autonomous_dev_bench-0.1.0-py3-none-any.whl": "11ee48b35dc903e27b27b7f509295d8883c93842355ed2600ee3a5cce9978aa7"
+  },
+  "build_dependencies": "installed from PyPI into isolated temporary target, no shared environment changed",
+  "model_calls": 0,
+  "historical_campaign_rescored": false,
+  "write_authority_changed": false
+}
