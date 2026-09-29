@@ -6,7 +6,7 @@ import pytest
 from suites.auto_zoning.context300k import corpus, verify, count, _fit, ARMS, PILOT_SEEDS, CONFIRM_SEEDS
 from suites.auto_zoning.context300k_workload import TASKS, configuration, sources
 from suites.auto_zoning.context300k_evaluation import qualify_controls, score_decisions
-from suites.auto_zoning.context300k_metrics import preflight, overlap, account_arm, compare
+from suites.auto_zoning.context300k_metrics import preflight, overlap, account_arm, compare, descriptive_resources
 
 class CharacterTokenizer:
     # Deliberately synthetic reference tokenizer; never a provider-context claim.
@@ -169,3 +169,19 @@ def test_empty_campaign_never_claims_a_win():
     descriptor=dispatch_descriptors(plan,dict(variant='v',history_sha256='h'),'B4',profile())
     assert len(descriptor['tasks'])==8
     assert all(t['owner_task_id'] is None for t in descriptor['tasks'])
+
+
+def test_ineligible_run_resources_remain_visible_without_creating_a_winner():
+    plan=dict(arms=ARMS,primary_target=300000);variant=dict(history_sha256='h',oracle_sha256='o')
+    bad=receipt();bad['task_spans']=bad['task_spans'][:-1]
+    arm=account_arm(plan,variant,'B4',bad,native_trace(777))
+    assert not arm['eligible']
+    view=descriptive_resources(arm)
+    assert view['eligible'] is False
+    assert view['provider_total_tokens']==777
+    assert view['quality_tasks']==len(TASKS)
+    assert 'incomplete_task_inventory' in view['errors']
+    from suites.auto_zoning.context300k_metrics import campaign_report
+    report=campaign_report(dict(primary_target=300000,arms=ARMS,variants=[]),[])
+    assert report['automatic_architecture_winner'] is None
+    assert report['all_run_resources']==[]

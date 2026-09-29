@@ -95,6 +95,23 @@ def compare(a,b,variant):
 
 
 
+def descriptive_resources(result):
+    """Expose measured cost/quality for failed or ineligible arms without ranking them."""
+    if not isinstance(result, dict):
+        raise TypeError('arm result must be an object')
+    concurrency=result.get('task_concurrency') if isinstance(result.get('task_concurrency'),dict) else {}
+    model_concurrency=result.get('model_concurrency') if isinstance(result.get('model_concurrency'),dict) else {}
+    return dict(
+      arm=result.get('arm'),eligible=result.get('eligible') is True,errors=list(result.get('errors') or ()),
+      semantic_success=result.get('semantic_success'),quality_tasks=result.get('quality_tasks'),
+      total_wall_time=result.get('total_wall_time'),provider_total_tokens=result.get('provider_total_tokens'),
+      input_tokens=result.get('input_tokens'),cached_input_tokens=result.get('cached_input_tokens'),
+      cache_write_tokens=result.get('cache_write_tokens'),output_tokens=result.get('output_tokens'),
+      reasoning_tokens=result.get('reasoning_tokens'),model_turns=result.get('model_turns'),tool_calls=result.get('tool_calls'),
+      peak_active_tasks=concurrency.get('peak_active'),task_overlap_ns=concurrency.get('overlap_ns'),
+      peak_active_model_requests=model_concurrency.get('peak_active'),model_overlap_ns=model_concurrency.get('overlap_ns'))
+
+
 def campaign_report(plan,pairs,*,resamples=5000):
     # One seed/task batch is one paired unit; individual asserts are not replicates.
     import random
@@ -119,7 +136,9 @@ def campaign_report(plan,pairs,*,resamples=5000):
     return dict(status='COMPLETE_PAIRED_MEASUREMENTS' if set(identities)==expected and len(valid)==len(expected) and expected else 'INCOMPLETE_OR_DESCRIPTIVE_ONLY',
       expected_pairs=len(expected),received_pairs=len(pairs),eligible_pairs=len(valid),missing=sorted(expected-set(identities)),
       quality_difference=interval(quality),speedup_equal_quality=interval(speed),token_saving_equal_quality=interval(saving),
-      all_pairs=analyzed,selection_warning='Resource ratios condition on equal final quality; also report all failed-run resource totals.',
+      all_pairs=analyzed,
+      all_run_resources=[dict(variant=p['variant'],A1=descriptive_resources(p['A1']),B4=descriptive_resources(p['B4'])) for p in pairs],
+      selection_warning='Resource ratios condition on equal final quality; all failed-run resource totals are descriptive and never converted into a winner.',
       automatic_architecture_winner=None)
 
 
